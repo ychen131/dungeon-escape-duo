@@ -55,11 +55,36 @@ const gameState = {
     playerItems: {} // Tracks current items for each player: { player1: 'Douse Fire', player2: 'Build Bridge' }
 };
 
-// Player starting positions
+// Player starting positions (design intent)
 const startingPositions = {
     player1: { x: 1, y: 1 },
-    player2: { x: 9, y: 6 } // Changed from (10,6) to (9,6) to avoid fire hazard
+    player2: { x: 10, y: 6 } // Back to original intended positions
 };
+
+// Function to ensure starting positions are safe (no hazards)
+function ensureSafeStartingPositions() {
+    console.log('Validating starting positions...');
+    
+    for (const [playerId, pos] of Object.entries(startingPositions)) {
+        const currentTile = gameState.dungeonLayout[pos.y][pos.x];
+        
+        if (currentTile !== TILE_TYPES.FLOOR) {
+            const tileTypeName = Object.keys(TILE_TYPES).find(key => TILE_TYPES[key] === currentTile);
+            console.log(`WARNING: ${playerId} starting position (${pos.x}, ${pos.y}) has ${tileTypeName}, converting to FLOOR`);
+            
+            // Convert hazard/wall to safe floor tile
+            gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+            console.log(`✅ ${playerId} starting position is now safe`);
+        } else {
+            console.log(`✅ ${playerId} starting position (${pos.x}, ${pos.y}) is already safe`);
+        }
+    }
+    
+    console.log('Starting position validation complete');
+}
+
+// Initialize safe starting positions on server startup
+ensureSafeStartingPositions();
 
 // Helper function to find an available player slot
 function findAvailablePlayerSlot() {
@@ -275,7 +300,7 @@ io.on('connection', (socket) => {
                 return; // Out of bounds
             }
             
-            const targetTile = dungeonLayout[newY][newX];
+            const targetTile = gameState.dungeonLayout[newY][newX];
             
             // Check for walls
             if (targetTile === TILE_TYPES.WALL) {

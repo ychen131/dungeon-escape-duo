@@ -68,8 +68,8 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Add server-side useItemRequest validation
 - [x] Implement item effects (fire removal, bridge building)
 - [x] Add turn switching after item use or movement
-- [x] Test turn-based puzzle mechanics
-- [x] **Bug Fix**: Fixed Player 2 starting position (was on fire hazard)
+- [x] Test turn-based puzzle mechanics  
+- [x] **Bug Fix**: Implemented robust starting position validation system
 
 ### Phase 4: Polish & Shipping (Friday EOD)
 
@@ -162,6 +162,12 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - Hidden information (secret item assignments)
 - Need communication to coordinate item usage
 - Turn-based strategy requiring planning ahead
+
+**Robust Starting Position System**:
+- `ensureSafeStartingPositions()` validates map on server startup
+- Automatically converts any hazards on starting tiles to safe floor tiles
+- Preserves intended starting positions while ensuring player safety
+- Future-proof for new levels and map modifications
 
 ### Data Flow
 

@@ -59,6 +59,7 @@
         // References to game objects
         let gameScene = null;
         let playerSprites = {};
+        let gridTiles = []; // Track grid tiles for clearing
         let statusElement = document.getElementById('status');
         let itemDisplayElement = document.getElementById('item-display');
         
@@ -184,6 +185,7 @@
             // Clear any existing game objects
             gameScene.children.removeAll();
             playerSprites = {};
+            gridTiles = []; // Clear grid tiles array
             
             // Re-add title
             gameScene.add.text(400, 50, 'Dungeon Escape Duo', {
@@ -203,6 +205,10 @@
 
         function renderDungeonGrid() {
             if (!gameScene || !serverGameState) return;
+            
+            // Clear existing grid tiles
+            gridTiles.forEach(tile => tile.destroy());
+            gridTiles = [];
             
             const dungeonLayout = serverGameState.dungeonLayout;
             const gridWidth = serverGameState.gridWidth;
@@ -238,12 +244,14 @@
                     // Create a rectangle for this tile
                     const tile = gameScene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
                     tile.setOrigin(0, 0);
+                    gridTiles.push(tile); // Track for clearing later
                     
                     // Add a subtle border effect
                     const border = gameScene.add.rectangle(x, y, TILE_SIZE, TILE_SIZE);
                     border.setStrokeStyle(1, 0x34495e);
                     border.setOrigin(0, 0);
                     border.setFillStyle();
+                    gridTiles.push(border); // Track for clearing later
                 }
             }
         }
@@ -281,6 +289,9 @@
 
         function updateGameRendering() {
             if (!gameScene || !serverGameState) return;
+            
+            // Re-render the entire grid to show tile changes (like fire being doused)
+            renderDungeonGrid();
             
             const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
             const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
