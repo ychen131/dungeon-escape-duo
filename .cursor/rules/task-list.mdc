@@ -1,5 +1,5 @@
 ---
-globs: _TASKS.md
+globs: .doc/tasks*
 alwaysApply: false
 ---
 ---

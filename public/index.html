@@ -260,7 +260,55 @@
             const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
             const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
             
-            // Update player sprite positions
+            // Check for new players and create sprites for them
+            for (const [playerId, player] of Object.entries(serverGameState.players)) {
+                if (!playerSprites[playerId]) {
+                    // New player detected - create sprite and label
+                    const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
+                    const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                    
+                    // Different colors for different players
+                    const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                    
+                    const sprite = gameScene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, color);
+                    sprite.setStrokeStyle(2, 0xffffff);
+                    sprite.setDepth(100);
+                    
+                    playerSprites[playerId] = sprite;
+                    
+                    // Add label above player
+                    const label = gameScene.add.text(pixelX, pixelY - 30, playerId.toUpperCase(), {
+                        fontSize: '12px',
+                        fill: '#ffffff'
+                    }).setOrigin(0.5);
+                    label.setDepth(101);
+                    
+                    playerSprites[playerId + '_label'] = label;
+                    
+                    console.log(`Created sprite for new player: ${playerId}`);
+                }
+            }
+            
+            // Remove sprites for players who have disconnected
+            for (const spriteKey of Object.keys(playerSprites)) {
+                if (spriteKey.endsWith('_label')) continue; // Skip labels, handle them with their player
+                
+                const playerId = spriteKey;
+                if (!serverGameState.players[playerId]) {
+                    // Player has disconnected - remove sprite and label
+                    if (playerSprites[playerId]) {
+                        playerSprites[playerId].destroy();
+                        delete playerSprites[playerId];
+                    }
+                    if (playerSprites[playerId + '_label']) {
+                        playerSprites[playerId + '_label'].destroy();
+                        delete playerSprites[playerId + '_label'];
+                    }
+                    console.log(`Removed sprite for disconnected player: ${playerId}`);
+                }
+            }
+            
+            // Update positions for all existing players
             for (const [playerId, player] of Object.entries(serverGameState.players)) {
                 const sprite = playerSprites[playerId];
                 const label = playerSprites[playerId + '_label'];
