@@ -48,6 +48,25 @@
             console.log('Disconnected from server');
         });
 
+        // Dungeon Level Layout
+        // 0 = floor tile (walkable)
+        // 1 = wall tile (not walkable)
+        const dungeonLayout = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        // Grid configuration
+        const GRID_WIDTH = 12;
+        const GRID_HEIGHT = 8;
+        const TILE_SIZE = 50;
+
         // Phaser 3 Game Configuration
         const config = {
             type: Phaser.AUTO,
