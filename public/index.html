@@ -148,19 +148,36 @@
                   document.getElementById('game-container').style.backgroundSize = '300% 300%';
                   document.getElementById('game-container').style.animation = 'gradient-shift 2s ease infinite';
                   
-              // Check for win condition
-              } else if (newGameState.gameWon) {
-                  // Create elaborate victory display
-                  const levelName = newGameState.levelProgression === 1 ? "Level 1" : newGameState.levelProgression === 2 ? "Level 2" : `Level ${newGameState.levelProgression}`;
-                  const isMaxLevel = newGameState.levelProgression >= 2;
+              // Check for final game completion
+              } else if (newGameState.gameCompleted) {
+                  // Final victory - game completely finished!
+                  statusElement.textContent = `🏆 DUNGEON ESCAPE DUO MASTERED! 🏆`;
+                  itemDisplayElement.textContent = `🎉 PERFECT TEAMWORK! You conquered all levels together! 🎉 | Refresh to play again`;
                   
-                  if (isMaxLevel) {
-                      statusElement.textContent = `🏆 CONGRATULATIONS! YOU MASTERED THE DUNGEON! 🏆`;
-                      itemDisplayElement.textContent = `🎉 Both players completed ${levelName}! 🎉 | You worked perfectly together!`;
-                  } else {
-                      statusElement.textContent = `🎉 VICTORY! ${levelName.toUpperCase()} COMPLETE! 🎉`;
-                      itemDisplayElement.textContent = `🌟 Excellent teamwork! Advancing to ${levelName === "Level 1" ? "Level 2" : "Level 3"} in 5 seconds... 🌟`;
-                  }
+                  statusElement.style.color = '#ff6b35'; // Bright orange-red for ultimate victory
+                  statusElement.style.fontSize = '24px';
+                  statusElement.style.fontWeight = 'bold';
+                  statusElement.style.textShadow = '0 0 20px rgba(255, 107, 53, 0.9)'; // Bright glow
+                  statusElement.style.textAlign = 'center';
+                  statusElement.className = 'victory-animation'; // Add pulsing animation
+                  
+                  itemDisplayElement.style.color = '#d35400'; // Dark orange for contrast
+                  itemDisplayElement.style.fontSize = '18px';
+                  itemDisplayElement.style.fontWeight = 'bold';
+                  itemDisplayElement.style.textAlign = 'center';
+                  
+                  // Add epic final victory effect to the game container
+                  document.getElementById('game-container').style.background = 'linear-gradient(45deg, #e74c3c, #f39c12, #e67e22, #e74c3c)';
+                  document.getElementById('game-container').style.backgroundSize = '400% 400%';
+                  document.getElementById('game-container').style.animation = 'gradient-shift 1.5s ease infinite';
+                  
+              // Check for level completion (but not final game completion)
+              } else if (newGameState.gameWon) {
+                  // Create victory display for level completion
+                  const levelName = newGameState.levelProgression === 1 ? "Level 1" : "Level 2";
+                  
+                  statusElement.textContent = `🎉 VICTORY! ${levelName.toUpperCase()} COMPLETE! 🎉`;
+                  itemDisplayElement.textContent = `🌟 Excellent teamwork! Advancing to Level 2 in 5 seconds... 🌟`;
                   
                   statusElement.style.color = '#f1c40f'; // Golden yellow for victory
                   statusElement.style.fontSize = '22px';
@@ -524,7 +541,11 @@
                      }
                      
                      // Special victory effects for player sprites
-                     if (serverGameState.gameWon) {
+                     if (serverGameState.gameCompleted) {
+                         sprite.setScale(1.3); // Make both players even larger for final victory
+                         sprite.setStrokeStyle(5, 0xff6b35); // Bright orange border for final victory
+                         label.setStyle({ fontSize: '18px', fill: '#ff6b35', fontWeight: 'bold' }); // Orange final victory labels
+                     } else if (serverGameState.gameWon) {
                          sprite.setScale(1.2); // Make both players larger
                          sprite.setStrokeStyle(4, 0xffd700); // Gold border for victory
                          label.setStyle({ fontSize: '16px', fill: '#ffd700', fontWeight: 'bold' }); // Gold victory labels
@@ -551,8 +572,8 @@
                     return;
                 }
                 
-                if (serverGameState.gameWon) {
-                    console.log('Cannot move: game already won!');
+                if (serverGameState.gameWon || serverGameState.gameCompleted) {
+                    console.log('Cannot move: game completed!');
                     return;
                 }
                 
@@ -577,8 +598,8 @@
                     return;
                 }
                 
-                if (serverGameState.gameWon) {
-                    console.log('Cannot use item: game already won!');
+                if (serverGameState.gameWon || serverGameState.gameCompleted) {
+                    console.log('Cannot use item: game completed!');
                     return;
                 }
                 

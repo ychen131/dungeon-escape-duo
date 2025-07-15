@@ -295,7 +295,21 @@ function assignRandomItems() {
 
 // Helper function to advance to next level after victory
 function advanceToNextLevel() {
-    // Increment level progression
+    // Check if we've completed Level 2 - if so, end the game entirely
+    if (gameState.levelProgression === 2) {
+        console.log('🏆 GAME COMPLETED! Both levels mastered!');
+        
+        // Set final victory state
+        gameState.gameCompleted = true;
+        gameState.finalVictoryTime = new Date().toISOString();
+        
+        // Broadcast final victory state
+        broadcastCustomizedGameState();
+        
+        return; // End the game here - no more levels
+    }
+    
+    // Increment level progression (only from 1 to 2)
     gameState.levelProgression++;
     
     // Determine next level string based on progression
@@ -304,10 +318,6 @@ function advanceToNextLevel() {
         nextLevel = 'level1';
     } else if (gameState.levelProgression === 2) {
         nextLevel = 'level2';
-    } else {
-        // Max level reached - could extend with more levels in future
-        nextLevel = 'level2';
-        console.log('🏆 MAX LEVEL REACHED! Playing hardest available level.');
     }
     
     console.log(`🚀 ADVANCING TO LEVEL ${gameState.levelProgression}!`);
