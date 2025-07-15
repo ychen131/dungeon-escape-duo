@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeon Escape Duo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #2c3e50;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            text-align: center;
+        }
+        h1 {
+            color: #ecf0f1;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Dungeon Escape Duo</h1>
+        <div id="game"></div>
+    </div>
+
+    <!-- Phaser 3 Library via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    
+    <!-- Socket.io Client Library -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <script>
+        // Socket.io connection
+        const socket = io();
+        
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+        });
+
+        // Phaser 3 Game Configuration
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game',
+            backgroundColor: '#34495e',
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        // Phaser 3 Scene Functions
+        function preload() {
+            // Preload assets (none for now)
+        }
+
+        function create() {
+            // Create game objects
+            this.add.text(400, 300, 'Dungeon Escape Duo', {
+                fontSize: '32px',
+                fill: '#ecf0f1'
+            }).setOrigin(0.5);
+            
+            this.add.text(400, 350, 'Waiting for game to start...', {
+                fontSize: '16px',
+                fill: '#bdc3c7'
+            }).setOrigin(0.5);
+        }
+
+        function update() {
+            // Game loop (empty for now)
+        }
+
+        // Initialize the game
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html> 

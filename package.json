@@ -1,0 +1,18 @@
+{
+  "name": "dungeon-escape",
+  "version": "1.0.0",
+  "description": "A 2-player cooperative puzzle game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["game", "multiplayer", "puzzle", "cooperative"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}

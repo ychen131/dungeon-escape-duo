@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+This is a 2-player cooperative puzzle game called "Dungeon Escape Duo". 
+This is a 5-day project and we are aiming for a polished MVP.
+
+Key Architecture:
+1.  **Server is the Source of Truth:** The Node.js server (`server.js`) running Express and Socket.io holds the master game state (grid layout, player positions, items, whose turn it is).
+2.  **Client is for Rendering and Input:** The client (`index.html`) uses Phaser 3 to render the game state it receives from the server. It does not have its own game logic.
+3.  **Communication Protocol:**
+    - The client sends user input as requests to the server (e.g., `socket.emit('moveRequest', { direction: 'up' })`).
+    - The server validates the request, updates the master game state, and then broadcasts the new state to all clients.
