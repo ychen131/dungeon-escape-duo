@@ -15,6 +15,23 @@
             background-color: #2c3e50;
             font-family: Arial, sans-serif;
         }
+        
+        /* Victory screen animations */
+        @keyframes victory-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .victory-animation {
+            animation: victory-pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes gradient-shift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
         #game-container {
             text-align: center;
         }
@@ -26,6 +43,8 @@
             color: #ecf0f1;
             margin-top: 20px;
             font-size: 16px;
+            transition: all 0.3s ease; /* Smooth transitions for turn changes */
+            text-align: center;
         }
     </style>
 </head>
@@ -34,7 +53,7 @@
         <h1>Dungeon Escape Duo</h1>
         <div id="game"></div>
         <div id="status">Connecting to server...</div>
-        <div id="item-display" style="color: #ecf0f1; margin-top: 10px; font-size: 18px; font-weight: bold;"></div>
+        <div id="item-display" style="text-align: center;"></div>
     </div>
 
     <!-- Phaser 3 Library via CDN -->
@@ -84,10 +103,19 @@
         });
         
         socket.on('gameState', (newGameState) => {
-            console.log('Received game state:', newGameState);
-            
-            // Store the new game state
-            serverGameState = newGameState;
+            try {
+                console.log('Received game state:', newGameState);
+                
+                // Validate game state structure
+                if (!newGameState || typeof newGameState !== 'object') {
+                    console.error('❌ Invalid game state received:', newGameState);
+                    statusElement.textContent = '❌ Connection error - invalid game state';
+                    statusElement.style.color = '#e74c3c';
+                    return;
+                }
+                
+                // Store the new game state
+                serverGameState = newGameState;
             
             // If this is the initial game state, store our player ID
             if (newGameState.yourPlayerId) {
@@ -98,29 +126,99 @@
                          // Update status
              const playerCount = Object.keys(newGameState.players).length;
              
-                           // Check for win condition first
-              if (newGameState.gameWon) {
-                  statusElement.textContent = `🎉 LEVEL COMPLETE! Advancing to next level... 🎉`;
-                  statusElement.style.color = '#27ae60'; // Bright green for victory
-                  statusElement.style.fontSize = '20px';
+                           // Check for level transition first
+              if (newGameState.levelTransition && newGameState.levelTransition.isTransitioning) {
+                  const toLevel = newGameState.levelTransition.toLevel;
+                  statusElement.textContent = `🚀 ENTERING LEVEL ${toLevel} 🚀`;
+                  statusElement.style.color = '#3498db'; // Blue for transition
+                  statusElement.style.fontSize = '24px';
                   statusElement.style.fontWeight = 'bold';
-                  itemDisplayElement.textContent = `Level ${newGameState.levelProgression} Complete! Get ready for the next challenge...`;
-                  itemDisplayElement.style.color = '#27ae60';
-             } else if (playerCount === 1) {
-                 statusElement.textContent = `⏳ Waiting for partner to join... You are ${myPlayerId}`;
-                 statusElement.style.color = '#f39c12'; // Orange for waiting
-                 statusElement.style.fontSize = '18px';
-                 statusElement.style.fontWeight = 'bold';
-                 itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Partner needed to continue`;
-                 itemDisplayElement.style.color = '#f39c12';
+                  statusElement.style.textShadow = '0 0 20px rgba(52, 152, 219, 0.8)'; // Blue glow
+                  statusElement.style.textAlign = 'center';
+                  statusElement.className = 'victory-animation'; // Reuse pulsing animation
+                  
+                  itemDisplayElement.textContent = `🎯 Prepare for greater challenges! New puzzles await... 🎯`;
+                  itemDisplayElement.style.color = '#9b59b6'; // Purple for mystery
+                  itemDisplayElement.style.fontSize = '16px';
+                  itemDisplayElement.style.fontWeight = 'bold';
+                  itemDisplayElement.style.textAlign = 'center';
+                  
+                  // Add transition background effect
+                  document.getElementById('game-container').style.background = 'linear-gradient(45deg, #3498db, #9b59b6, #3498db)';
+                  document.getElementById('game-container').style.backgroundSize = '300% 300%';
+                  document.getElementById('game-container').style.animation = 'gradient-shift 2s ease infinite';
+                  
+              // Check for win condition
+              } else if (newGameState.gameWon) {
+                  // Create elaborate victory display
+                  const levelName = newGameState.levelProgression === 1 ? "Level 1" : newGameState.levelProgression === 2 ? "Level 2" : `Level ${newGameState.levelProgression}`;
+                  const isMaxLevel = newGameState.levelProgression >= 2;
+                  
+                  if (isMaxLevel) {
+                      statusElement.textContent = `🏆 CONGRATULATIONS! YOU MASTERED THE DUNGEON! 🏆`;
+                      itemDisplayElement.textContent = `🎉 Both players completed ${levelName}! 🎉 | You worked perfectly together!`;
+                  } else {
+                      statusElement.textContent = `🎉 VICTORY! ${levelName.toUpperCase()} COMPLETE! 🎉`;
+                      itemDisplayElement.textContent = `🌟 Excellent teamwork! Advancing to ${levelName === "Level 1" ? "Level 2" : "Level 3"} in 5 seconds... 🌟`;
+                  }
+                  
+                  statusElement.style.color = '#f1c40f'; // Golden yellow for victory
+                  statusElement.style.fontSize = '22px';
+                  statusElement.style.fontWeight = 'bold';
+                  statusElement.style.textShadow = '0 0 15px rgba(241, 196, 15, 0.8)'; // Golden glow
+                  statusElement.style.textAlign = 'center';
+                  statusElement.className = 'victory-animation'; // Add pulsing animation
+                  
+                  itemDisplayElement.style.color = '#27ae60'; // Green for celebration
+                  itemDisplayElement.style.fontSize = '16px';
+                  itemDisplayElement.style.fontWeight = 'bold';
+                  itemDisplayElement.style.textAlign = 'center';
+                  
+                  // Add celebration confetti effect to the game container
+                  document.getElementById('game-container').style.background = 'linear-gradient(45deg, #2c3e50, #34495e, #2c3e50)';
+                  document.getElementById('game-container').style.backgroundSize = '200% 200%';
+                  document.getElementById('game-container').style.animation = 'gradient-shift 3s ease infinite';
+                            } else if (playerCount === 1) {
+                  // Check if there was a disconnection vs fresh start
+                  if (newGameState.disconnectedPlayer) {
+                      const disconnectedPlayerId = newGameState.disconnectedPlayer.playerId.toUpperCase();
+                      statusElement.textContent = `⚠️ ${disconnectedPlayerId} disconnected! Waiting for reconnection... You are ${myPlayerId}`;
+                      statusElement.style.color = '#e74c3c'; // Red for disconnection
+                      itemDisplayElement.textContent = `Game paused at Level ${newGameState.levelProgression} | ${disconnectedPlayerId} has 30 seconds to reconnect`;
+                  } else {
+                      statusElement.textContent = `⏳ Waiting for partner to join... You are ${myPlayerId}`;
+                      statusElement.style.color = '#f39c12'; // Orange for waiting
+                      itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Partner needed to continue`;
+                  }
+                  
+                  statusElement.style.fontSize = '18px';
+                  statusElement.style.fontWeight = 'bold';
+                  statusElement.className = ''; // Remove any victory animations
+                  statusElement.style.textShadow = 'none';
+                  itemDisplayElement.style.color = statusElement.style.color;
+                  
+                  // Reset background for non-victory states
+                  document.getElementById('game-container').style.background = 'none';
+                  document.getElementById('game-container').style.animation = 'none';
              } else if (playerCount === 2) {
                  if (newGameState.gameStarted) {
                      const isMyTurn = newGameState.currentPlayerTurn === myPlayerId;
-                     const turnStatus = isMyTurn ? "YOUR TURN" : `${newGameState.currentPlayerTurn.toUpperCase()}'S TURN`;
-                     statusElement.textContent = `${turnStatus} | You are ${myPlayerId} | Arrow keys: move, SPACE: use item`;
-                     statusElement.style.color = isMyTurn ? '#2ecc71' : '#f39c12'; // Green for your turn, orange for waiting
-                     statusElement.style.fontSize = '16px';
-                     statusElement.style.fontWeight = 'normal';
+                     
+                     if (isMyTurn) {
+                         statusElement.textContent = `🟢 YOUR TURN | You are ${myPlayerId} | Arrow keys: move, SPACE: use item`;
+                         statusElement.style.color = '#2ecc71'; // Bright green for your turn
+                         statusElement.style.fontSize = '18px';
+                         statusElement.style.fontWeight = 'bold';
+                         statusElement.style.textShadow = '0 0 10px rgba(46, 204, 113, 0.5)'; // Subtle glow effect
+                     } else {
+                         const otherPlayer = newGameState.currentPlayerTurn.toUpperCase();
+                         statusElement.textContent = `⏳ ${otherPlayer}'S TURN | You are ${myPlayerId} | Wait for your partner...`;
+                         statusElement.style.color = '#f39c12'; // Orange for waiting
+                                               statusElement.style.fontSize = '16px';
+                      statusElement.style.fontWeight = 'normal';
+                      statusElement.style.textShadow = 'none';
+                      statusElement.className = ''; // Remove victory animations
+                     }
                      
                      // Update item display
                      if (newGameState.yourItem) {
@@ -132,20 +230,41 @@
                      }
                  } else {
                      statusElement.textContent = `🚀 Both players ready! You are ${myPlayerId}. Game starting...`;
-                     statusElement.style.color = '#2ecc71'; // Green for ready
-                     statusElement.style.fontSize = '18px';
-                     statusElement.style.fontWeight = 'bold';
-                     itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Get ready to cooperate!`;
-                     itemDisplayElement.style.color = '#2ecc71';
+                                           statusElement.style.color = '#2ecc71'; // Green for ready
+                      statusElement.style.fontSize = '18px';
+                      statusElement.style.fontWeight = 'bold';
+                      statusElement.className = ''; // Remove victory animations
+                      statusElement.style.textShadow = 'none';
+                      itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Get ready to cooperate!`;
+                      itemDisplayElement.style.color = '#2ecc71';
+                      
+                      // Reset background for normal game states
+                      document.getElementById('game-container').style.background = 'none';
+                      document.getElementById('game-container').style.animation = 'none';
                  }
              }
             
-            // Initialize or update the game rendering
-            if (gameInitialized && gameScene) {
-                updateGameRendering();
-            } else if (!gameInitialized && newGameState.dungeonLayout) {
-                initializeGame();
+                // Initialize or update the game rendering
+                if (gameInitialized && gameScene) {
+                    updateGameRendering();
+                } else if (!gameInitialized && newGameState.dungeonLayout) {
+                    initializeGame();
+                }
+                
+            } catch (gameStateError) {
+                console.error('❌ Error processing game state:', gameStateError);
+                statusElement.textContent = '❌ Game rendering error - please refresh';
+                statusElement.style.color = '#e74c3c';
             }
+        });
+
+        // Handle game errors from server
+        socket.on('gameError', (errorData) => {
+            console.error('❌ Game error from server:', errorData);
+            statusElement.textContent = `❌ Game Error: ${errorData.message}`;
+            statusElement.style.color = '#e74c3c';
+            statusElement.style.fontSize = '16px';
+            statusElement.style.fontWeight = 'bold';
         });
 
         // Phaser 3 Game Configuration
@@ -222,7 +341,16 @@
         }
 
         function renderDungeonGrid() {
-            if (!gameScene || !serverGameState) return;
+            try {
+                if (!gameScene || !serverGameState) {
+                    console.warn('⚠️  Cannot render grid: missing scene or game state');
+                    return;
+                }
+                
+                if (!serverGameState.dungeonLayout || !Array.isArray(serverGameState.dungeonLayout)) {
+                    console.error('❌ Invalid dungeon layout:', serverGameState.dungeonLayout);
+                    return;
+                }
             
             // Clear existing grid tiles
             gridTiles.forEach(tile => tile.destroy());
@@ -273,6 +401,12 @@
                     border.setFillStyle();
                     gridTiles.push(border); // Track for clearing later
                 }
+            }
+            
+            } catch (error) {
+                console.error('❌ Error rendering dungeon grid:', error);
+                statusElement.textContent = '❌ Rendering error - please refresh';
+                statusElement.style.color = '#e74c3c';
             }
         }
 
@@ -375,6 +509,26 @@
                     
                     sprite.setPosition(pixelX, pixelY);
                     label.setPosition(pixelX, pixelY - 30);
+                    
+                    // Highlight current player's turn with visual effects
+                    if (serverGameState.gameStarted && serverGameState.currentPlayerTurn === playerId) {
+                        // Make current player's sprite more prominent
+                        sprite.setScale(1.1); // Slightly larger
+                        sprite.setStrokeStyle(3, 0xffff00); // Yellow glow
+                        label.setStyle({ fontSize: '14px', fill: '#ffff00', fontWeight: 'bold' }); // Yellow label
+                                         } else {
+                         // Normal appearance for waiting player
+                         sprite.setScale(1.0);
+                         sprite.setStrokeStyle(2, 0xffffff); // White border
+                         label.setStyle({ fontSize: '12px', fill: '#ffffff', fontWeight: 'normal' }); // White label
+                     }
+                     
+                     // Special victory effects for player sprites
+                     if (serverGameState.gameWon) {
+                         sprite.setScale(1.2); // Make both players larger
+                         sprite.setStrokeStyle(4, 0xffd700); // Gold border for victory
+                         label.setStyle({ fontSize: '16px', fill: '#ffd700', fontWeight: 'bold' }); // Gold victory labels
+                     }
                 }
             }
         }
@@ -391,49 +545,64 @@
 
         // Function to send move requests to server
         function sendMoveRequest(direction) {
-            if (!myPlayerId || !serverGameState) {
-                console.log('Cannot move: not connected or no player ID');
-                return;
+            try {
+                if (!myPlayerId || !serverGameState) {
+                    console.log('Cannot move: not connected or no player ID');
+                    return;
+                }
+                
+                if (serverGameState.gameWon) {
+                    console.log('Cannot move: game already won!');
+                    return;
+                }
+                
+                if (!direction || typeof direction !== 'string') {
+                    console.error('❌ Invalid direction for move request:', direction);
+                    return;
+                }
+                
+                console.log('Sending move request:', direction);
+                socket.emit('moveRequest', { direction: direction });
+                
+            } catch (error) {
+                console.error('❌ Error sending move request:', error);
             }
-            
-            if (serverGameState.gameWon) {
-                console.log('Cannot move: game already won!');
-                return;
-            }
-            
-            console.log('Sending move request:', direction);
-            socket.emit('moveRequest', { direction: direction });
         }
 
         // Function to send use item requests to server
         function sendUseItemRequest() {
-            if (!myPlayerId || !serverGameState) {
-                console.log('Cannot use item: not connected or no player ID');
-                return;
+            try {
+                if (!myPlayerId || !serverGameState) {
+                    console.log('Cannot use item: not connected or no player ID');
+                    return;
+                }
+                
+                if (serverGameState.gameWon) {
+                    console.log('Cannot use item: game already won!');
+                    return;
+                }
+                
+                if (!serverGameState.gameStarted) {
+                    console.log('Cannot use item: game not started');
+                    return;
+                }
+                
+                if (serverGameState.currentPlayerTurn !== myPlayerId) {
+                    console.log('Cannot use item: not your turn');
+                    return;
+                }
+                
+                if (!serverGameState.yourItem) {
+                    console.log('Cannot use item: no item assigned');
+                    return;
+                }
+                
+                console.log('Sending use item request:', serverGameState.yourItem);
+                socket.emit('useItemRequest', { item: serverGameState.yourItem });
+                
+            } catch (error) {
+                console.error('❌ Error sending use item request:', error);
             }
-            
-            if (serverGameState.gameWon) {
-                console.log('Cannot use item: game already won!');
-                return;
-            }
-            
-            if (!serverGameState.gameStarted) {
-                console.log('Cannot use item: game not started');
-                return;
-            }
-            
-            if (serverGameState.currentPlayerTurn !== myPlayerId) {
-                console.log('Cannot use item: not your turn');
-                return;
-            }
-            
-            if (!serverGameState.yourItem) {
-                console.log('Cannot use item: no item assigned');
-                return;
-            }
-            
-            console.log('Sending use item request:', serverGameState.yourItem);
-            socket.emit('useItemRequest', { item: serverGameState.yourItem });
         }
 
         function update() {

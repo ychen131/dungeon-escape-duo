@@ -218,23 +218,67 @@ function getConnectedPlayerCount() {
 
 // Helper function to create customized game state for a specific player
 function createCustomizedGameState(playerId) {
-    const customizedState = {
-        ...gameState,
-        yourPlayerId: playerId,
-        yourItem: gameState.playerItems[playerId] || null
-    };
-    // Remove sensitive data (other player's items)
-    delete customizedState.playerItems;
-    return customizedState;
+    try {
+        if (!playerId) {
+            console.error('❌ Error: createCustomizedGameState called with null/undefined playerId');
+            return gameState;
+        }
+        
+        const customizedState = {
+            ...gameState,
+            yourPlayerId: playerId,
+            yourItem: gameState.playerItems[playerId] || null
+        };
+        
+        // Remove sensitive data (other player's items)
+        delete customizedState.playerItems;
+        return customizedState;
+        
+    } catch (error) {
+        console.error('❌ Error in createCustomizedGameState:', error);
+        return gameState; // Fallback to basic game state
+    }
 }
 
 // Helper function to broadcast customized game state to all connected players
 function broadcastCustomizedGameState() {
-    for (const [playerId, player] of Object.entries(gameState.players)) {
-        const socket = io.sockets.sockets.get(player.socketId);
-        if (socket) {
-            socket.emit('gameState', createCustomizedGameState(playerId));
+    try {
+        if (!gameState.players || typeof gameState.players !== 'object') {
+            console.error('❌ Error: Invalid gameState.players in broadcastCustomizedGameState');
+            return;
         }
+        
+        let successfulBroadcasts = 0;
+        let failedBroadcasts = 0;
+        
+        for (const [playerId, player] of Object.entries(gameState.players)) {
+            try {
+                if (!player || !player.socketId) {
+                    console.warn(`⚠️  Warning: Invalid player data for ${playerId}`);
+                    failedBroadcasts++;
+                    continue;
+                }
+                
+                const socket = io.sockets.sockets.get(player.socketId);
+                if (socket && socket.connected) {
+                    socket.emit('gameState', createCustomizedGameState(playerId));
+                    successfulBroadcasts++;
+                } else {
+                    console.warn(`⚠️  Warning: Socket not found or disconnected for ${playerId}`);
+                    failedBroadcasts++;
+                }
+            } catch (playerError) {
+                console.error(`❌ Error broadcasting to ${playerId}:`, playerError);
+                failedBroadcasts++;
+            }
+        }
+        
+        if (failedBroadcasts > 0) {
+            console.log(`📡 Broadcast complete: ${successfulBroadcasts} successful, ${failedBroadcasts} failed`);
+        }
+        
+    } catch (error) {
+        console.error('❌ Critical error in broadcastCustomizedGameState:', error);
     }
 }
 
@@ -268,28 +312,46 @@ function advanceToNextLevel() {
     
     console.log(`🚀 ADVANCING TO LEVEL ${gameState.levelProgression}!`);
     
-    // Load random map from next level
-    loadNewMap(nextLevel);
+    // Set transition state for level change
+    gameState.levelTransition = {
+        isTransitioning: true,
+        fromLevel: gameState.levelProgression - 1,
+        toLevel: gameState.levelProgression,
+        transitionStartTime: Date.now()
+    };
     
-    // Reset game state for new level
-    gameState.gameWon = false;
-    gameState.gameStarted = true; // Both players still connected
-    gameState.currentPlayerTurn = 'player1'; // Player 1 starts new level
+    // Broadcast transition state first
+    broadcastCustomizedGameState();
     
-    // Reset player positions to starting positions
-    if (gameState.players.player1) {
-        gameState.players.player1.x = startingPositions.player1.x;
-        gameState.players.player1.y = startingPositions.player1.y;
-    }
-    if (gameState.players.player2) {
-        gameState.players.player2.x = startingPositions.player2.x;
-        gameState.players.player2.y = startingPositions.player2.y;
-    }
-    
-    // Assign new items for the new level
-    assignRandomItems();
-    
-    console.log(`✨ New level ready! Players reset to starting positions.`);
+    // After transition delay, load the new level
+    setTimeout(() => {
+        // Load random map from next level
+        loadNewMap(nextLevel);
+        
+        // Reset game state for new level
+        gameState.gameWon = false;
+        gameState.gameStarted = true; // Both players still connected
+        gameState.currentPlayerTurn = 'player1'; // Player 1 starts new level
+        gameState.levelTransition = null; // Clear transition state
+        
+        // Reset player positions to starting positions
+        if (gameState.players.player1) {
+            gameState.players.player1.x = startingPositions.player1.x;
+            gameState.players.player1.y = startingPositions.player1.y;
+        }
+        if (gameState.players.player2) {
+            gameState.players.player2.x = startingPositions.player2.x;
+            gameState.players.player2.y = startingPositions.player2.y;
+        }
+        
+        // Assign new items for the new level
+        assignRandomItems();
+        
+        console.log(`✨ New level ready! Players reset to starting positions.`);
+        
+        // Broadcast final new level state
+        broadcastCustomizedGameState();
+    }, 3000); // 3 second transition screen
 }
 
 // Helper function to check if both players are on exit tiles (win condition)
@@ -311,14 +373,15 @@ function checkWinCondition() {
     
     if (player1OnExit && player2OnExit) {
         gameState.gameWon = true;
+        gameState.victoryTime = new Date().toISOString();
         console.log('🎉 VICTORY! Both players reached the exit!');
         
-        // Trigger level progression after a brief delay
+        // Trigger level progression after a longer celebration period
         setTimeout(() => {
             advanceToNextLevel();
             // Broadcast new level to all clients
             broadcastCustomizedGameState();
-        }, 2000); // 2 second victory celebration before advancing
+        }, 5000); // 5 second victory celebration before advancing
         
         return true;
     }
@@ -350,6 +413,9 @@ io.on('connection', (socket) => {
     const playerId = findAvailablePlayerSlot();
     
     if (playerId) {
+        // Check if this is a reconnection
+        const isReconnection = gameState.disconnectedPlayer && gameState.disconnectedPlayer.playerId === playerId;
+        
         // Initialize player in game state
         gameState.players[playerId] = {
             id: playerId,
@@ -357,6 +423,18 @@ io.on('connection', (socket) => {
             x: startingPositions[playerId].x,
             y: startingPositions[playerId].y
         };
+        
+        if (isReconnection) {
+            console.log(`🔄 ${playerId} reconnected! Resuming game...`);
+            gameState.disconnectedPlayer = null; // Clear disconnect info
+            
+            // If it was an active game, restore it
+            if (gameState.disconnectedPlayer && gameState.disconnectedPlayer.wasInGame) {
+                // Could restore game state here if needed
+            }
+        } else {
+            console.log(`✨ ${playerId} joined fresh`);
+        }
         
         console.log(`Assigned ${playerId} to socket ${socket.id}`);
         
@@ -379,10 +457,32 @@ io.on('connection', (socket) => {
         
         // Handle use item requests from this client
         socket.on('useItemRequest', (data) => {
-            const { item } = data;
-            const player = gameState.players[playerId];
-            
-            if (!player) return;
+            try {
+                // Validate input data
+                if (!data || typeof data !== 'object') {
+                    console.warn(`⚠️  Invalid useItemRequest data from ${playerId}:`, data);
+                    return;
+                }
+                
+                const { item } = data;
+                const player = gameState.players[playerId];
+                
+                if (!player) {
+                    console.warn(`⚠️  useItemRequest from non-existent player: ${playerId}`);
+                    return;
+                }
+                
+                if (!item || typeof item !== 'string') {
+                    console.warn(`⚠️  Invalid item from ${playerId}:`, item);
+                    return;
+                }
+                
+                // Validate item is one of the allowed types
+                const validItems = Object.values(ITEM_TYPES);
+                if (!validItems.includes(item)) {
+                    console.warn(`⚠️  Unknown item type '${item}' from ${playerId}`);
+                    return;
+                }
             
             // Check if game has started and it's this player's turn
             if (!gameState.gameStarted) {
@@ -454,14 +554,45 @@ io.on('connection', (socket) => {
                     }
                 }
             }
+            
+            } catch (itemError) {
+                console.error(`❌ Error processing item use for ${playerId}:`, itemError);
+                // Send error state to player
+                socket.emit('gameError', { 
+                    message: 'Item use processing failed', 
+                    error: itemError.message 
+                });
+            }
         });
         
         // Handle move requests from this client
         socket.on('moveRequest', (data) => {
-            const { direction } = data;
-            const player = gameState.players[playerId];
-            
-            if (!player) return;
+            try {
+                // Validate input data
+                if (!data || typeof data !== 'object') {
+                    console.warn(`⚠️  Invalid moveRequest data from ${playerId}:`, data);
+                    return;
+                }
+                
+                const { direction } = data;
+                const player = gameState.players[playerId];
+                
+                if (!player) {
+                    console.warn(`⚠️  moveRequest from non-existent player: ${playerId}`);
+                    return;
+                }
+                
+                if (!direction || typeof direction !== 'string') {
+                    console.warn(`⚠️  Invalid direction from ${playerId}:`, direction);
+                    return;
+                }
+                
+                // Validate direction is one of the allowed values
+                const validDirections = ['up', 'down', 'left', 'right'];
+                if (!validDirections.includes(direction)) {
+                    console.warn(`⚠️  Invalid direction '${direction}' from ${playerId}`);
+                    return;
+                }
             
             // Check if game has started and it's this player's turn
             if (!gameState.gameStarted) {
@@ -507,23 +638,32 @@ io.on('connection', (socket) => {
             
             // Exit tiles are walkable (no blocking needed)
             
-            // Valid move - update player position in game state
-            player.x = newX;
-            player.y = newY;
-            
-            console.log(`${playerId} moved to (${newX}, ${newY})`);
-            
-            // Check for win condition after the move
-            const gameWon = checkWinCondition();
-            
-            if (!gameWon) {
-                // Only switch turns if game hasn't been won
-                gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
-                console.log(`Turn switched to: ${gameState.currentPlayerTurn}`);
+                // Valid move - update player position in game state
+                player.x = newX;
+                player.y = newY;
+                
+                console.log(`${playerId} moved to (${newX}, ${newY})`);
+                
+                // Check for win condition after the move
+                const gameWon = checkWinCondition();
+                
+                if (!gameWon) {
+                    // Only switch turns if game hasn't been won
+                    gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
+                    console.log(`Turn switched to: ${gameState.currentPlayerTurn}`);
+                }
+                
+                // Broadcast updated game state to all clients (customized for each)
+                broadcastCustomizedGameState();
+                
+            } catch (moveError) {
+                console.error(`❌ Error processing move for ${playerId}:`, moveError);
+                // Send error state to player
+                socket.emit('gameError', { 
+                    message: 'Move processing failed', 
+                    error: moveError.message 
+                });
             }
-            
-            // Broadcast updated game state to all clients (customized for each)
-            broadcastCustomizedGameState();
         });
         
     } else {
@@ -540,25 +680,53 @@ io.on('connection', (socket) => {
         return;
     }
     
-    socket.on('disconnect', () => {
+        socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         
         // Remove this specific player from game state
         if (gameState.players[playerId] && gameState.players[playerId].socketId === socket.id) {
+            console.log(`${playerId} disconnected from game`);
+            
+            // Store disconnect info for graceful handling
+            const disconnectedPlayer = {
+                playerId: playerId,
+                disconnectTime: Date.now(),
+                wasInGame: gameState.gameStarted
+            };
+            
             delete gameState.players[playerId];
-            console.log(`Removed ${playerId} from game`);
             
-                    // Handle game state when a player disconnects
-        if (gameState.gameStarted) {
-            gameState.gameStarted = false;
-            gameState.currentPlayerTurn = null;
-            gameState.playerItems = {}; // Clear items when game stops
-            gameState.gameWon = false; // Reset win state
-            console.log('Game paused due to player disconnect - waiting for reconnection...');
-        }
+            // Handle game state when a player disconnects
+            if (gameState.gameStarted) {
+                gameState.gameStarted = false;
+                gameState.currentPlayerTurn = null;
+                gameState.playerItems = {}; // Clear items when game stops
+                gameState.gameWon = false; // Reset win state
+                gameState.levelTransition = null; // Clear any transitions
+                
+                // Add disconnect info to game state
+                gameState.disconnectedPlayer = disconnectedPlayer;
+                
+                console.log(`⚠️  Game paused: ${playerId} disconnected during active game`);
+                console.log(`🔄 Waiting for ${playerId} to reconnect or new player to join...`);
+            } else {
+                console.log(`👋 ${playerId} left while waiting - no active game disrupted`);
+            }
             
-            // Notify remaining players of the updated game state
+            // Notify remaining players with graceful disconnect message
             broadcastCustomizedGameState();
+            
+            // Auto-cleanup after 30 seconds if no reconnection
+            setTimeout(() => {
+                if (gameState.disconnectedPlayer && gameState.disconnectedPlayer.playerId === playerId) {
+                    console.log(`🧹 Auto-cleanup: ${playerId} didn't reconnect within 30 seconds`);
+                    gameState.disconnectedPlayer = null;
+                    // Reset to fresh game state for new players
+                    gameState.levelProgression = 1;
+                    loadNewMap('level1', 0);
+                    broadcastCustomizedGameState();
+                }
+            }, 30000); // 30 second cleanup timeout
         }
     });
 });
