@@ -18,6 +18,9 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Include Socket.io client library in index.html
 - [x] Write minimal Phaser 3 script for blank canvas
 - [x] Test "Hello World" connectivity (server logs connection, client logs connected)
+
+### Phase 1: Visual Client (Tuesday EOD) ✅
+
 - [x] Create hardcoded 2D array for dungeon level layout
 - [x] Implement grid rendering function using colored squares
 - [x] Add visual representations for floor tiles (grey)
@@ -26,12 +29,11 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Implement keyboard input handling (up, down, left, right)
 - [x] Add player movement logic with grid constraints
 - [x] Implement collision detection against walls
+- [x] Test single-player movement and collision
 
 ## In Progress Tasks
 
-### Phase 1: Visual Client (Tuesday EOD)
-
-- [ ] Test single-player movement and collision 🔄
+*Phase 1 completed - ready to begin Phase 2*
 
 ## Future Tasks
 
