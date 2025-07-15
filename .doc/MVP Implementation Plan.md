@@ -86,8 +86,10 @@ Timeline: Monday \- Friday
 
 1. **Levels & Win Condition:**  
    * Add an "Exit" tile type.  
-   * Implement a win condition: when both players are on exit tiles, the game is won.  
-   * Create 2-3 hardcoded level layouts. Add logic to load the next level after a win.  
+   * Implement a win condition: when both players are on exit tiles, the game is won.
+   * Create a "map pool" for each difficulty level (e.g., 3 different layouts for Level 1, 2 for Level 2).
+   * When a new level starts, the server will randomly select one map from the appropriate pool. This adds significant replay value for low engineering cost.
+
 2. **UI/UX Polish:**  
    * Add simple on-screen text for game states: "Waiting for partner...", "Player 1's Turn", "You Win\!", "Level 2".  
    * Ensure the game gracefully handles a player disconnecting.  

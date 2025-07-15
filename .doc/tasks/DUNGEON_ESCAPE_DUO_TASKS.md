@@ -56,14 +56,14 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 
 ### Phase 3: Core Puzzle Loop (Thursday EOD)
 
-- [ ] Implement turn management system (currentPlayerTurn)
-- [ ] Add server-side turn validation for requests
-- [ ] Create item assignment system ("Douse Fire", "Build Bridge")
-- [ ] Implement hazard tiles (Fire Hazard, Chasm)
-- [ ] Add item randomization at turn start
-- [ ] Create customized game state per player (hide partner's item)
-- [ ] Add UI elements for current turn display
-- [ ] Add UI elements for current item display
+- [x] Implement turn management system (currentPlayerTurn)
+- [x] Add server-side turn validation for requests
+- [x] Create item assignment system ("Douse Fire", "Build Bridge")
+- [x] Implement hazard tiles (Fire Hazard, Chasm)
+- [x] Add item randomization at turn start
+- [x] Create customized game state per player (hide partner's item)
+- [x] Add UI elements for current turn display
+- [x] Add UI elements for current item display
 - [ ] Implement "Use Item" keybind and client handling
 - [ ] Add server-side useItemRequest validation
 - [ ] Implement item effects (fire removal, bridge building)

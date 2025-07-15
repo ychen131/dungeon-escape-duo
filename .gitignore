@@ -9,3 +9,9 @@ yarn-error.log*
 .env.production.local
 .DS_Store
 *.log 
+
+## cursor rules
+.cursor/rules/
+
+## documents
+.doc/

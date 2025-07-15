@@ -34,6 +34,7 @@
         <h1>Dungeon Escape Duo</h1>
         <div id="game"></div>
         <div id="status">Connecting to server...</div>
+        <div id="item-display" style="color: #ecf0f1; margin-top: 10px; font-size: 18px; font-weight: bold;"></div>
     </div>
 
     <!-- Phaser 3 Library via CDN -->
@@ -59,6 +60,7 @@
         let gameScene = null;
         let playerSprites = {};
         let statusElement = document.getElementById('status');
+        let itemDisplayElement = document.getElementById('item-display');
         
         // Socket event handlers
         socket.on('connect', () => {
@@ -92,13 +94,32 @@
                 console.log('Assigned as:', myPlayerId);
             }
             
-            // Update status
-            const playerCount = Object.keys(newGameState.players).length;
-            if (playerCount === 1) {
-                statusElement.textContent = `You are ${myPlayerId}. Waiting for second player...`;
-            } else if (playerCount === 2) {
-                statusElement.textContent = `Both players connected! You are ${myPlayerId}. Use arrow keys to move.`;
-            }
+                         // Update status
+             const playerCount = Object.keys(newGameState.players).length;
+             if (playerCount === 1) {
+                 statusElement.textContent = `You are ${myPlayerId}. Waiting for second player...`;
+                 statusElement.style.color = '#ecf0f1';
+                 itemDisplayElement.textContent = '';
+             } else if (playerCount === 2) {
+                 if (newGameState.gameStarted) {
+                     const isMyTurn = newGameState.currentPlayerTurn === myPlayerId;
+                     const turnStatus = isMyTurn ? "YOUR TURN" : `${newGameState.currentPlayerTurn.toUpperCase()}'S TURN`;
+                     statusElement.textContent = `${turnStatus} | You are ${myPlayerId} | Use arrow keys to move`;
+                     statusElement.style.color = isMyTurn ? '#2ecc71' : '#f39c12'; // Green for your turn, orange for waiting
+                     
+                     // Update item display
+                     if (newGameState.yourItem) {
+                         itemDisplayElement.textContent = `Your Item: ${newGameState.yourItem}`;
+                         itemDisplayElement.style.color = '#3498db'; // Blue for item
+                     } else {
+                         itemDisplayElement.textContent = '';
+                     }
+                 } else {
+                     statusElement.textContent = `Both players connected! You are ${myPlayerId}. Starting game...`;
+                     statusElement.style.color = '#ecf0f1';
+                     itemDisplayElement.textContent = '';
+                 }
+             }
             
             // Initialize or update the game rendering
             if (gameInitialized && gameScene) {
@@ -202,13 +223,17 @@
                     const x = startX + (col * TILE_SIZE);
                     const y = startY + (row * TILE_SIZE);
                     
-                    // Choose color based on tile type
-                    let color;
-                    if (tileType === 0) {
-                        color = 0x95a5a6; // Light grey for floor tiles
-                    } else if (tileType === 1) {
-                        color = 0x2c3e50; // Dark grey for wall tiles
-                    }
+                                         // Choose color based on tile type
+                     let color;
+                     if (tileType === 0) {
+                         color = 0x95a5a6; // Light grey for floor tiles
+                     } else if (tileType === 1) {
+                         color = 0x2c3e50; // Dark grey for wall tiles
+                     } else if (tileType === 2) {
+                         color = 0xe74c3c; // Red for fire hazard
+                     } else if (tileType === 3) {
+                         color = 0x8e44ad; // Purple for chasm
+                     }
                     
                     // Create a rectangle for this tile
                     const tile = gameScene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
