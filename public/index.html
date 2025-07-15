@@ -97,28 +97,46 @@
             
                          // Update status
              const playerCount = Object.keys(newGameState.players).length;
-             if (playerCount === 1) {
-                 statusElement.textContent = `You are ${myPlayerId}. Waiting for second player...`;
-                 statusElement.style.color = '#ecf0f1';
-                 itemDisplayElement.textContent = '';
+             
+                           // Check for win condition first
+              if (newGameState.gameWon) {
+                  statusElement.textContent = `🎉 LEVEL COMPLETE! Advancing to next level... 🎉`;
+                  statusElement.style.color = '#27ae60'; // Bright green for victory
+                  statusElement.style.fontSize = '20px';
+                  statusElement.style.fontWeight = 'bold';
+                  itemDisplayElement.textContent = `Level ${newGameState.levelProgression} Complete! Get ready for the next challenge...`;
+                  itemDisplayElement.style.color = '#27ae60';
+             } else if (playerCount === 1) {
+                 statusElement.textContent = `⏳ Waiting for partner to join... You are ${myPlayerId}`;
+                 statusElement.style.color = '#f39c12'; // Orange for waiting
+                 statusElement.style.fontSize = '18px';
+                 statusElement.style.fontWeight = 'bold';
+                 itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Partner needed to continue`;
+                 itemDisplayElement.style.color = '#f39c12';
              } else if (playerCount === 2) {
                  if (newGameState.gameStarted) {
                      const isMyTurn = newGameState.currentPlayerTurn === myPlayerId;
                      const turnStatus = isMyTurn ? "YOUR TURN" : `${newGameState.currentPlayerTurn.toUpperCase()}'S TURN`;
                      statusElement.textContent = `${turnStatus} | You are ${myPlayerId} | Arrow keys: move, SPACE: use item`;
                      statusElement.style.color = isMyTurn ? '#2ecc71' : '#f39c12'; // Green for your turn, orange for waiting
+                     statusElement.style.fontSize = '16px';
+                     statusElement.style.fontWeight = 'normal';
                      
                      // Update item display
                      if (newGameState.yourItem) {
-                         itemDisplayElement.textContent = `Your Item: ${newGameState.yourItem}`;
+                         itemDisplayElement.textContent = `Your Item: ${newGameState.yourItem} | Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1}`;
                          itemDisplayElement.style.color = '#3498db'; // Blue for item
                      } else {
-                         itemDisplayElement.textContent = '';
+                         itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1}`;
+                         itemDisplayElement.style.color = '#95a5a6'; // Grey for map info
                      }
                  } else {
-                     statusElement.textContent = `Both players connected! You are ${myPlayerId}. Starting game...`;
-                     statusElement.style.color = '#ecf0f1';
-                     itemDisplayElement.textContent = '';
+                     statusElement.textContent = `🚀 Both players ready! You are ${myPlayerId}. Game starting...`;
+                     statusElement.style.color = '#2ecc71'; // Green for ready
+                     statusElement.style.fontSize = '18px';
+                     statusElement.style.fontWeight = 'bold';
+                     itemDisplayElement.textContent = `Level ${newGameState.levelProgression} - ${newGameState.currentLevel.toUpperCase()} Layout ${newGameState.mapIndex + 1} | Get ready to cooperate!`;
+                     itemDisplayElement.style.color = '#2ecc71';
                  }
              }
             
@@ -239,6 +257,8 @@
                          color = 0xe74c3c; // Red for fire hazard
                      } else if (tileType === 3) {
                          color = 0x8e44ad; // Purple for chasm
+                     } else if (tileType === 4) {
+                         color = 0x27ae60; // Green for exit tiles
                      }
                     
                     // Create a rectangle for this tile
@@ -376,6 +396,11 @@
                 return;
             }
             
+            if (serverGameState.gameWon) {
+                console.log('Cannot move: game already won!');
+                return;
+            }
+            
             console.log('Sending move request:', direction);
             socket.emit('moveRequest', { direction: direction });
         }
@@ -384,6 +409,11 @@
         function sendUseItemRequest() {
             if (!myPlayerId || !serverGameState) {
                 console.log('Cannot use item: not connected or no player ID');
+                return;
+            }
+            
+            if (serverGameState.gameWon) {
+                console.log('Cannot use item: game already won!');
                 return;
             }
             
