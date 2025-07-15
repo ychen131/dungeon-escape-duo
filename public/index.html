@@ -22,12 +22,18 @@
             color: #ecf0f1;
             margin-bottom: 20px;
         }
+        #status {
+            color: #ecf0f1;
+            margin-top: 20px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
     <div id="game-container">
         <h1>Dungeon Escape Duo</h1>
         <div id="game"></div>
+        <div id="status">Connecting to server...</div>
     </div>
 
     <!-- Phaser 3 Library via CDN -->
@@ -40,39 +46,67 @@
         // Socket.io connection
         const socket = io();
         
+        // Game state received from server
+        let serverGameState = null;
+        let myPlayerId = null;
+        let gameInitialized = false;
+        let connectionRejected = false;
+        
+        // Grid configuration
+        const TILE_SIZE = 50;
+        
+        // References to game objects
+        let gameScene = null;
+        let playerSprites = {};
+        let statusElement = document.getElementById('status');
+        
+        // Socket event handlers
         socket.on('connect', () => {
             console.log('Connected to server');
+            statusElement.textContent = 'Connected! Waiting for game state...';
         });
         
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
+            if (!connectionRejected) {
+                statusElement.textContent = 'Disconnected from server';
+            }
         });
-
-        // Dungeon Level Layout
-        // 0 = floor tile (walkable)
-        // 1 = wall tile (not walkable)
-        const dungeonLayout = [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ];
-
-        // Grid configuration
-        const GRID_WIDTH = 12;
-        const GRID_HEIGHT = 8;
-        const TILE_SIZE = 50;
-
-        // Player configuration
-        let player1 = {
-            x: 1,  // Grid position (column)
-            y: 1,  // Grid position (row)
-            sprite: null  // Will hold the Phaser sprite
-        };
+        
+        socket.on('connectionRejected', (data) => {
+            console.log('Connection rejected:', data.reason);
+            connectionRejected = true;
+            statusElement.textContent = `Connection rejected: ${data.reason}`;
+            statusElement.style.color = '#e74c3c'; // Red color for error
+        });
+        
+        socket.on('gameState', (newGameState) => {
+            console.log('Received game state:', newGameState);
+            
+            // Store the new game state
+            serverGameState = newGameState;
+            
+            // If this is the initial game state, store our player ID
+            if (newGameState.yourPlayerId) {
+                myPlayerId = newGameState.yourPlayerId;
+                console.log('Assigned as:', myPlayerId);
+            }
+            
+            // Update status
+            const playerCount = Object.keys(newGameState.players).length;
+            if (playerCount === 1) {
+                statusElement.textContent = `You are ${myPlayerId}. Waiting for second player...`;
+            } else if (playerCount === 2) {
+                statusElement.textContent = `Both players connected! You are ${myPlayerId}. Use arrow keys to move.`;
+            }
+            
+            // Initialize or update the game rendering
+            if (gameInitialized && gameScene) {
+                updateGameRendering();
+            } else if (!gameInitialized && newGameState.dungeonLayout) {
+                initializeGame();
+            }
+        });
 
         // Phaser 3 Game Configuration
         const config = {
@@ -94,17 +128,7 @@
         }
 
         function create() {
-            // Store reference to this scene for later use
-            window.gameScene = this;
-            
-            // Render the dungeon grid
-            renderDungeonGrid(this);
-            
-            // Create player sprite
-            createPlayerSprite(this);
-            
-            // Set up keyboard input
-            setupKeyboardInput(this);
+            gameScene = this;
             
             // Add game title above the grid
             this.add.text(400, 50, 'Dungeon Escape Duo', {
@@ -112,23 +136,65 @@
                 fill: '#ecf0f1'
             }).setOrigin(0.5);
             
-            // Add status text below the grid
-            this.add.text(400, 550, 'Use arrow keys to move', {
-                fontSize: '16px',
-                fill: '#bdc3c7'
-            }).setOrigin(0.5);
+            // Set up keyboard input
+            setupKeyboardInput(this);
+            
+            // If we already have game state, render it
+            if (serverGameState) {
+                renderInitialGame();
+            }
         }
 
-        // Function to render the dungeon grid
-        function renderDungeonGrid(scene) {
+        function initializeGame() {
+            if (!serverGameState || gameInitialized) return;
+            
+            console.log('Initializing game with server state');
+            gameInitialized = true;
+            
+            // If the Phaser scene is ready, render immediately
+            if (gameScene) {
+                renderInitialGame();
+            }
+        }
+
+        function renderInitialGame() {
+            if (!gameScene || !serverGameState) return;
+            
+            // Clear any existing game objects
+            gameScene.children.removeAll();
+            playerSprites = {};
+            
+            // Re-add title
+            gameScene.add.text(400, 50, 'Dungeon Escape Duo', {
+                fontSize: '24px',
+                fill: '#ecf0f1'
+            }).setOrigin(0.5);
+            
+            // Render the dungeon grid
+            renderDungeonGrid();
+            
+            // Create player sprites
+            createPlayerSprites();
+            
+            // Update status
+            updateGameRendering();
+        }
+
+        function renderDungeonGrid() {
+            if (!gameScene || !serverGameState) return;
+            
+            const dungeonLayout = serverGameState.dungeonLayout;
+            const gridWidth = serverGameState.gridWidth;
+            const gridHeight = serverGameState.gridHeight;
+            
             // Calculate starting position to center the grid
-            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
-            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
+            const startX = (800 - (gridWidth * TILE_SIZE)) / 2;
+            const startY = (600 - (gridHeight * TILE_SIZE)) / 2;
             
             // Loop through each row
-            for (let row = 0; row < GRID_HEIGHT; row++) {
+            for (let row = 0; row < gridHeight; row++) {
                 // Loop through each column
-                for (let col = 0; col < GRID_WIDTH; col++) {
+                for (let col = 0; col < gridWidth; col++) {
                     // Get the tile type from the dungeon layout
                     const tileType = dungeonLayout[row][col];
                     
@@ -145,11 +211,11 @@
                     }
                     
                     // Create a rectangle for this tile
-                    const tile = scene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
+                    const tile = gameScene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
                     tile.setOrigin(0, 0);
                     
                     // Add a subtle border effect
-                    const border = scene.add.rectangle(x, y, TILE_SIZE, TILE_SIZE);
+                    const border = gameScene.add.rectangle(x, y, TILE_SIZE, TILE_SIZE);
                     border.setStrokeStyle(1, 0x34495e);
                     border.setOrigin(0, 0);
                     border.setFillStyle();
@@ -157,74 +223,76 @@
             }
         }
 
-        // Function to create player sprite
-        function createPlayerSprite(scene) {
-            // Calculate starting position to center the grid (same as renderDungeonGrid)
-            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
-            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
+        function createPlayerSprites() {
+            if (!gameScene || !serverGameState) return;
             
-            // Calculate pixel position for player based on grid position
-            const pixelX = startX + (player1.x * TILE_SIZE) + (TILE_SIZE / 2);
-            const pixelY = startY + (player1.y * TILE_SIZE) + (TILE_SIZE / 2);
+            const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
+            const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
             
-            // Create blue square sprite for player
-            player1.sprite = scene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, 0x3498db);
+            // Create sprites for all players
+            for (const [playerId, player] of Object.entries(serverGameState.players)) {
+                const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
+                const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                
+                // Different colors for different players
+                const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                
+                const sprite = gameScene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, color);
+                sprite.setStrokeStyle(2, 0xffffff);
+                sprite.setDepth(100);
+                
+                playerSprites[playerId] = sprite;
+                
+                // Add label above player
+                const label = gameScene.add.text(pixelX, pixelY - 30, playerId.toUpperCase(), {
+                    fontSize: '12px',
+                    fill: '#ffffff'
+                }).setOrigin(0.5);
+                label.setDepth(101);
+                
+                playerSprites[playerId + '_label'] = label;
+            }
+        }
+
+        function updateGameRendering() {
+            if (!gameScene || !serverGameState) return;
             
-            // Add a white border to make it stand out
-            player1.sprite.setStrokeStyle(2, 0xffffff);
+            const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
+            const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
             
-            // Make sure player is rendered on top of the grid
-            player1.sprite.setDepth(100);
+            // Update player sprite positions
+            for (const [playerId, player] of Object.entries(serverGameState.players)) {
+                const sprite = playerSprites[playerId];
+                const label = playerSprites[playerId + '_label'];
+                
+                if (sprite && label) {
+                    const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
+                    const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                    
+                    sprite.setPosition(pixelX, pixelY);
+                    label.setPosition(pixelX, pixelY - 30);
+                }
+            }
         }
 
         // Function to set up keyboard input
         function setupKeyboardInput(scene) {
-            // Create cursor keys for arrow key input
-            window.cursors = scene.input.keyboard.createCursorKeys();
-            
             // Set up individual key listeners for immediate response
-            scene.input.keyboard.on('keydown-UP', () => movePlayer(0, -1));
-            scene.input.keyboard.on('keydown-DOWN', () => movePlayer(0, 1));
-            scene.input.keyboard.on('keydown-LEFT', () => movePlayer(-1, 0));
-            scene.input.keyboard.on('keydown-RIGHT', () => movePlayer(1, 0));
+            scene.input.keyboard.on('keydown-UP', () => sendMoveRequest('up'));
+            scene.input.keyboard.on('keydown-DOWN', () => sendMoveRequest('down'));
+            scene.input.keyboard.on('keydown-LEFT', () => sendMoveRequest('left'));
+            scene.input.keyboard.on('keydown-RIGHT', () => sendMoveRequest('right'));
         }
 
-        // Function to move player with grid constraints and collision detection
-        function movePlayer(deltaX, deltaY) {
-            // Calculate new position
-            const newX = player1.x + deltaX;
-            const newY = player1.y + deltaY;
-            
-            // Check if new position is within grid bounds
-            if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
-                return; // Out of bounds, don't move
+        // Function to send move requests to server
+        function sendMoveRequest(direction) {
+            if (!myPlayerId || !serverGameState) {
+                console.log('Cannot move: not connected or no player ID');
+                return;
             }
             
-            // Check if new position is a wall (1) or floor (0)
-            if (dungeonLayout[newY][newX] === 1) {
-                return; // Hit a wall, don't move
-            }
-            
-            // Valid move - update player position
-            player1.x = newX;
-            player1.y = newY;
-            
-            // Update sprite position
-            updatePlayerSpritePosition();
-        }
-
-        // Function to update player sprite position based on grid coordinates
-        function updatePlayerSpritePosition() {
-            // Calculate starting position to center the grid (same as renderDungeonGrid)
-            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
-            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
-            
-            // Calculate pixel position for player based on grid position
-            const pixelX = startX + (player1.x * TILE_SIZE) + (TILE_SIZE / 2);
-            const pixelY = startY + (player1.y * TILE_SIZE) + (TILE_SIZE / 2);
-            
-            // Update sprite position
-            player1.sprite.setPosition(pixelX, pixelY);
+            console.log('Sending move request:', direction);
+            socket.emit('moveRequest', { direction: direction });
         }
 
         function update() {

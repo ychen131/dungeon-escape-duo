@@ -1,4 +1,5 @@
 ---
+globs: _TASKS.md
 alwaysApply: false
 ---
 ---
