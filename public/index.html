@@ -103,6 +103,9 @@
             // Create player sprite
             createPlayerSprite(this);
             
+            // Set up keyboard input
+            setupKeyboardInput(this);
+            
             // Add game title above the grid
             this.add.text(400, 50, 'Dungeon Escape Duo', {
                 fontSize: '24px',
@@ -110,7 +113,7 @@
             }).setOrigin(0.5);
             
             // Add status text below the grid
-            this.add.text(400, 550, 'Waiting for game to start...', {
+            this.add.text(400, 550, 'Use arrow keys to move', {
                 fontSize: '16px',
                 fill: '#bdc3c7'
             }).setOrigin(0.5);
@@ -172,6 +175,56 @@
             
             // Make sure player is rendered on top of the grid
             player1.sprite.setDepth(100);
+        }
+
+        // Function to set up keyboard input
+        function setupKeyboardInput(scene) {
+            // Create cursor keys for arrow key input
+            window.cursors = scene.input.keyboard.createCursorKeys();
+            
+            // Set up individual key listeners for immediate response
+            scene.input.keyboard.on('keydown-UP', () => movePlayer(0, -1));
+            scene.input.keyboard.on('keydown-DOWN', () => movePlayer(0, 1));
+            scene.input.keyboard.on('keydown-LEFT', () => movePlayer(-1, 0));
+            scene.input.keyboard.on('keydown-RIGHT', () => movePlayer(1, 0));
+        }
+
+        // Function to move player with grid constraints and collision detection
+        function movePlayer(deltaX, deltaY) {
+            // Calculate new position
+            const newX = player1.x + deltaX;
+            const newY = player1.y + deltaY;
+            
+            // Check if new position is within grid bounds
+            if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
+                return; // Out of bounds, don't move
+            }
+            
+            // Check if new position is a wall (1) or floor (0)
+            if (dungeonLayout[newY][newX] === 1) {
+                return; // Hit a wall, don't move
+            }
+            
+            // Valid move - update player position
+            player1.x = newX;
+            player1.y = newY;
+            
+            // Update sprite position
+            updatePlayerSpritePosition();
+        }
+
+        // Function to update player sprite position based on grid coordinates
+        function updatePlayerSpritePosition() {
+            // Calculate starting position to center the grid (same as renderDungeonGrid)
+            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
+            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
+            
+            // Calculate pixel position for player based on grid position
+            const pixelX = startX + (player1.x * TILE_SIZE) + (TILE_SIZE / 2);
+            const pixelY = startY + (player1.y * TILE_SIZE) + (TILE_SIZE / 2);
+            
+            // Update sprite position
+            player1.sprite.setPosition(pixelX, pixelY);
         }
 
         function update() {
