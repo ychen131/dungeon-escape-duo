@@ -19,21 +19,20 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Write minimal Phaser 3 script for blank canvas
 - [x] Test "Hello World" connectivity (server logs connection, client logs connected)
 - [x] Create hardcoded 2D array for dungeon level layout
+- [x] Implement grid rendering function using colored squares
+- [x] Add visual representations for floor tiles (grey)
+- [x] Add visual representations for wall tiles (dark grey)
 
 ## In Progress Tasks
 
 ### Phase 1: Visual Client (Tuesday EOD)
 
-- [ ] Implement grid rendering function using colored squares 🔄
+- [ ] Create player sprite placeholder (blue square) 🔄
 
 ## Future Tasks
 
 ### Phase 1: Visual Client (Tuesday EOD)
 
-- [ ] Implement grid rendering function using colored squares
-- [ ] Add visual representations for floor tiles (grey)
-- [ ] Add visual representations for wall tiles (dark grey)
-- [ ] Create player sprite placeholder (blue square)
 - [ ] Implement keyboard input handling (up, down, left, right)
 - [ ] Add player movement logic with grid constraints
 - [ ] Implement collision detection against walls

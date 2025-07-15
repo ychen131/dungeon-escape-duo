@@ -87,16 +87,61 @@
         }
 
         function create() {
-            // Create game objects
-            this.add.text(400, 300, 'Dungeon Escape Duo', {
-                fontSize: '32px',
+            // Store reference to this scene for later use
+            window.gameScene = this;
+            
+            // Render the dungeon grid
+            renderDungeonGrid(this);
+            
+            // Add game title above the grid
+            this.add.text(400, 50, 'Dungeon Escape Duo', {
+                fontSize: '24px',
                 fill: '#ecf0f1'
             }).setOrigin(0.5);
             
-            this.add.text(400, 350, 'Waiting for game to start...', {
+            // Add status text below the grid
+            this.add.text(400, 550, 'Waiting for game to start...', {
                 fontSize: '16px',
                 fill: '#bdc3c7'
             }).setOrigin(0.5);
+        }
+
+        // Function to render the dungeon grid
+        function renderDungeonGrid(scene) {
+            // Calculate starting position to center the grid
+            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
+            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
+            
+            // Loop through each row
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                // Loop through each column
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    // Get the tile type from the dungeon layout
+                    const tileType = dungeonLayout[row][col];
+                    
+                    // Calculate pixel position
+                    const x = startX + (col * TILE_SIZE);
+                    const y = startY + (row * TILE_SIZE);
+                    
+                    // Choose color based on tile type
+                    let color;
+                    if (tileType === 0) {
+                        color = 0x95a5a6; // Light grey for floor tiles
+                    } else if (tileType === 1) {
+                        color = 0x2c3e50; // Dark grey for wall tiles
+                    }
+                    
+                    // Create a rectangle for this tile
+                    const tile = scene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
+                    tile.setOrigin(0, 0);
+                    
+                    // Add a subtle border effect
+                    const border = scene.add.rectangle(x, y, TILE_SIZE, TILE_SIZE);
+                    border.setStrokeStyle(1, 0x34495e);
+                    border.setOrigin(0, 0);
+                    border.setFillStyle();
+                }
+            }
         }
 
         function update() {
