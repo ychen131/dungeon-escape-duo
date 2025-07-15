@@ -22,18 +22,18 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Implement grid rendering function using colored squares
 - [x] Add visual representations for floor tiles (grey)
 - [x] Add visual representations for wall tiles (dark grey)
+- [x] Create player sprite placeholder (blue square)
 
 ## In Progress Tasks
 
 ### Phase 1: Visual Client (Tuesday EOD)
 
-- [ ] Create player sprite placeholder (blue square) 🔄
+- [ ] Implement keyboard input handling (up, down, left, right) 🔄
 
 ## Future Tasks
 
 ### Phase 1: Visual Client (Tuesday EOD)
 
-- [ ] Implement keyboard input handling (up, down, left, right)
 - [ ] Add player movement logic with grid constraints
 - [ ] Implement collision detection against walls
 - [ ] Test single-player movement and collision

@@ -67,6 +67,13 @@
         const GRID_HEIGHT = 8;
         const TILE_SIZE = 50;
 
+        // Player configuration
+        let player1 = {
+            x: 1,  // Grid position (column)
+            y: 1,  // Grid position (row)
+            sprite: null  // Will hold the Phaser sprite
+        };
+
         // Phaser 3 Game Configuration
         const config = {
             type: Phaser.AUTO,
@@ -92,6 +99,9 @@
             
             // Render the dungeon grid
             renderDungeonGrid(this);
+            
+            // Create player sprite
+            createPlayerSprite(this);
             
             // Add game title above the grid
             this.add.text(400, 50, 'Dungeon Escape Duo', {
@@ -142,6 +152,26 @@
                     border.setFillStyle();
                 }
             }
+        }
+
+        // Function to create player sprite
+        function createPlayerSprite(scene) {
+            // Calculate starting position to center the grid (same as renderDungeonGrid)
+            const startX = (800 - (GRID_WIDTH * TILE_SIZE)) / 2;
+            const startY = (600 - (GRID_HEIGHT * TILE_SIZE)) / 2;
+            
+            // Calculate pixel position for player based on grid position
+            const pixelX = startX + (player1.x * TILE_SIZE) + (TILE_SIZE / 2);
+            const pixelY = startY + (player1.y * TILE_SIZE) + (TILE_SIZE / 2);
+            
+            // Create blue square sprite for player
+            player1.sprite = scene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, 0x3498db);
+            
+            // Add a white border to make it stand out
+            player1.sprite.setStrokeStyle(2, 0xffffff);
+            
+            // Make sure player is rendered on top of the grid
+            player1.sprite.setDepth(100);
         }
 
         function update() {
