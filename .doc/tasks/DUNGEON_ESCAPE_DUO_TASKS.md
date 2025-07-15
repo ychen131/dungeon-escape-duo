@@ -73,19 +73,22 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 
 ### Phase 4: Polish & Shipping (Friday EOD)
 
-- [ ] Add "Exit" tile type to grid system
+- [ ] Add "Exit" tile type (tile type 4) to grid system
 - [ ] Implement win condition (both players on exit tiles)
-- [ ] Create 2-3 hardcoded level layouts
+- [ ] Create map pool system with multiple layouts per difficulty level
+- [ ] Design 3 different layouts for Level 1 (easier puzzles)
+- [ ] Design 2 different layouts for Level 2 (harder puzzles)
+- [ ] Implement random map selection from appropriate difficulty pool
 - [ ] Add level progression system after wins
 - [ ] Implement "Waiting for partner..." UI state
-- [ ] Add "Player X's Turn" UI indicators
-- [ ] Create "You Win!" screen
-- [ ] Add level transition screens ("Level 2", etc.)
+- [ ] Add "Player X's Turn" UI indicators with proper styling
+- [ ] Create "You Win!" screen with level completion
+- [ ] Add level transition screens ("Level 2", "Level 3", etc.)
 - [ ] Implement graceful player disconnection handling
-- [ ] Add error handling and edge case management
-- [ ] **Stretch Goal**: Replace placeholder art with pixel sprites
+- [ ] Add comprehensive error handling and edge case management
+- [ ] **Stretch Goal**: Replace placeholder squares with pixel art sprites
 - [ ] **Stretch Goal**: Add sound effects and background music
-- [ ] Final testing and bug fixes
+- [ ] Final testing and bug fixes across all difficulty levels
 
 ## Implementation Plan
 
