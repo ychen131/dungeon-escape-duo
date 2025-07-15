@@ -50,11 +50,11 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 
 ## In Progress Tasks
 
-*Phase 2 completed successfully! Ready to begin Phase 3: Core Puzzle Loop*
+*Phase 3 completed with bug fixes! Ready for Phase 4: Polish & Shipping*
 
 ## Future Tasks
 
-### Phase 3: Core Puzzle Loop (Thursday EOD)
+### Phase 3: Core Puzzle Loop (Thursday EOD) ✅
 
 - [x] Implement turn management system (currentPlayerTurn)
 - [x] Add server-side turn validation for requests
@@ -64,11 +64,12 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 - [x] Create customized game state per player (hide partner's item)
 - [x] Add UI elements for current turn display
 - [x] Add UI elements for current item display
-- [ ] Implement "Use Item" keybind and client handling
-- [ ] Add server-side useItemRequest validation
-- [ ] Implement item effects (fire removal, bridge building)
-- [ ] Add turn switching after item use or movement
-- [ ] Test turn-based puzzle mechanics
+- [x] Implement "Use Item" keybind and client handling
+- [x] Add server-side useItemRequest validation
+- [x] Implement item effects (fire removal, bridge building)
+- [x] Add turn switching after item use or movement
+- [x] Test turn-based puzzle mechanics
+- [x] **Bug Fix**: Fixed Player 2 starting position (was on fire hazard)
 
 ### Phase 4: Polish & Shipping (Friday EOD)
 
@@ -136,6 +137,31 @@ A 2-player cooperative puzzle game where players must communicate to solve dunge
 1. **Player Refresh Issue**: Rewrote player management to use specific slots instead of counters
 2. **Connection Rejection**: Added proper timing and flag handling for "Game is full" message
 3. **Real-time Joining**: Enhanced `updateGameRendering()` to create sprites for new players dynamically
+
+**Phase 3 Implementation Details**:
+
+**Turn-Based Gameplay**:
+- `currentPlayerTurn` and `gameStarted` state management
+- Server-side turn validation (only current player can act)
+- Automatic turn switching after moves or item usage
+- Visual turn indicators with color coding (green/orange)
+
+**Item & Hazard System**:
+- Two item types: "Douse Fire" and "Build Bridge"
+- Two hazard types: Fire Hazard (red tiles) and Chasm (purple tiles)
+- Random item assignment when game starts and after item usage
+- Customized game state (players can't see partner's items)
+
+**Puzzle Mechanics**:
+- Items affect adjacent tiles (up/down/left/right from player)
+- "Douse Fire" removes fire hazards, "Build Bridge" fills chasms
+- Hazards converted to walkable floor tiles when items used
+- SPACEBAR key for item usage with full validation
+
+**Cooperative Elements**:
+- Hidden information (secret item assignments)
+- Need communication to coordinate item usage
+- Turn-based strategy requiring planning ahead
 
 ### Data Flow
 

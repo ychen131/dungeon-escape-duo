@@ -58,7 +58,7 @@ const gameState = {
 // Player starting positions
 const startingPositions = {
     player1: { x: 1, y: 1 },
-    player2: { x: 10, y: 6 }
+    player2: { x: 9, y: 6 } // Changed from (10,6) to (9,6) to avoid fire hazard
 };
 
 // Helper function to find an available player slot
@@ -159,6 +159,85 @@ io.on('connection', (socket) => {
         
         // Check if we can start the game (both players connected)
         startGame();
+        
+        // Handle use item requests from this client
+        socket.on('useItemRequest', (data) => {
+            const { item } = data;
+            const player = gameState.players[playerId];
+            
+            if (!player) return;
+            
+            // Check if game has started and it's this player's turn
+            if (!gameState.gameStarted) {
+                console.log(`Use item rejected: Game not started`);
+                return;
+            }
+            
+            if (gameState.currentPlayerTurn !== playerId) {
+                console.log(`Use item rejected: Not ${playerId}'s turn`);
+                return;
+            }
+            
+            // Check if player has the item they're trying to use
+            if (gameState.playerItems[playerId] !== item) {
+                console.log(`Use item rejected: ${playerId} doesn't have ${item}`);
+                return;
+            }
+            
+            // Find adjacent hazard tiles that this item can affect
+            const playerX = player.x;
+            const playerY = player.y;
+            const adjacentPositions = [
+                { x: playerX, y: playerY - 1 }, // Up
+                { x: playerX, y: playerY + 1 }, // Down
+                { x: playerX - 1, y: playerY }, // Left
+                { x: playerX + 1, y: playerY }  // Right
+            ];
+            
+            let itemUsed = false;
+            
+            for (const pos of adjacentPositions) {
+                // Check bounds
+                if (pos.x < 0 || pos.x >= GRID_WIDTH || pos.y < 0 || pos.y >= GRID_HEIGHT) {
+                    continue;
+                }
+                
+                const tileType = gameState.dungeonLayout[pos.y][pos.x];
+                
+                // Check if item can be used on this tile
+                if (item === ITEM_TYPES.DOUSE_FIRE && tileType === TILE_TYPES.FIRE_HAZARD) {
+                    // Remove fire hazard
+                    gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+                    console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
+                    itemUsed = true;
+                } else if (item === ITEM_TYPES.BUILD_BRIDGE && tileType === TILE_TYPES.CHASM) {
+                    // Fill chasm with bridge
+                    gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+                    console.log(`${playerId} used ${item} to build bridge over chasm at (${pos.x}, ${pos.y})`);
+                    itemUsed = true;
+                }
+            }
+            
+            if (itemUsed) {
+                // Switch turns after successful item use
+                gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
+                console.log(`Turn switched to: ${gameState.currentPlayerTurn} after item use`);
+                
+                // Reassign new random items for next turn
+                assignRandomItems();
+                
+                // Broadcast updated game state to all clients
+                broadcastCustomizedGameState();
+            } else {
+                console.log(`${playerId} tried to use ${item} but no valid targets found`);
+                console.log(`Player at (${playerX}, ${playerY}), adjacent tiles checked:`);
+                for (const pos of adjacentPositions) {
+                    if (pos.x >= 0 && pos.x < GRID_WIDTH && pos.y >= 0 && pos.y < GRID_HEIGHT) {
+                        console.log(`  (${pos.x}, ${pos.y}): tile type ${gameState.dungeonLayout[pos.y][pos.x]}`);
+                    }
+                }
+            }
+        });
         
         // Handle move requests from this client
         socket.on('moveRequest', (data) => {

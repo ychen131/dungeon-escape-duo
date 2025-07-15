@@ -104,7 +104,7 @@
                  if (newGameState.gameStarted) {
                      const isMyTurn = newGameState.currentPlayerTurn === myPlayerId;
                      const turnStatus = isMyTurn ? "YOUR TURN" : `${newGameState.currentPlayerTurn.toUpperCase()}'S TURN`;
-                     statusElement.textContent = `${turnStatus} | You are ${myPlayerId} | Use arrow keys to move`;
+                     statusElement.textContent = `${turnStatus} | You are ${myPlayerId} | Arrow keys: move, SPACE: use item`;
                      statusElement.style.color = isMyTurn ? '#2ecc71' : '#f39c12'; // Green for your turn, orange for waiting
                      
                      // Update item display
@@ -355,6 +355,7 @@
             scene.input.keyboard.on('keydown-DOWN', () => sendMoveRequest('down'));
             scene.input.keyboard.on('keydown-LEFT', () => sendMoveRequest('left'));
             scene.input.keyboard.on('keydown-RIGHT', () => sendMoveRequest('right'));
+            scene.input.keyboard.on('keydown-SPACE', () => sendUseItemRequest());
         }
 
         // Function to send move requests to server
@@ -366,6 +367,32 @@
             
             console.log('Sending move request:', direction);
             socket.emit('moveRequest', { direction: direction });
+        }
+
+        // Function to send use item requests to server
+        function sendUseItemRequest() {
+            if (!myPlayerId || !serverGameState) {
+                console.log('Cannot use item: not connected or no player ID');
+                return;
+            }
+            
+            if (!serverGameState.gameStarted) {
+                console.log('Cannot use item: game not started');
+                return;
+            }
+            
+            if (serverGameState.currentPlayerTurn !== myPlayerId) {
+                console.log('Cannot use item: not your turn');
+                return;
+            }
+            
+            if (!serverGameState.yourItem) {
+                console.log('Cannot use item: no item assigned');
+                return;
+            }
+            
+            console.log('Sending use item request:', serverGameState.yourItem);
+            socket.emit('useItemRequest', { item: serverGameState.yourItem });
         }
 
         function update() {
