@@ -361,12 +361,6 @@
         function create() {
             gameScene = this;
             
-            // Add game title above the grid
-            this.add.text(400, 50, 'Dungeon Escape Duo', {
-                fontSize: '24px',
-                fill: '#ecf0f1'
-            }).setOrigin(0.5);
-            
             // Set up keyboard input
             setupKeyboardInput(this);
             
@@ -397,12 +391,6 @@
             gridTiles = []; // Clear grid tiles array
             tilemapLayers = []; // Clear tilemap layers
             currentTilemap = null; // Clear current tilemap
-            
-            // Re-add title
-            gameScene.add.text(400, 50, 'Dungeon Escape Duo', {
-                fontSize: '24px',
-                fill: '#ecf0f1'
-            }).setOrigin(0.5);
             
             // Try to render using tilemap first, fallback to grid if it fails
             if (!renderTilemap()) {
@@ -559,9 +547,9 @@
                 
                 console.log(`Map dimensions: ${map.width}x${map.height} tiles, ${mapWidth}x${mapHeight} pixels`);
                 
-                // Target area (leave space for title and UI)
+                // Target area (leave space for status)
                 const targetWidth = 800;
-                const targetHeight = 500; // Leave space for title and status
+                const targetHeight = 580; // Leave small space for status at bottom
                 
                 // Calculate scale to fit
                 const scaleX = targetWidth / mapWidth;
@@ -570,7 +558,7 @@
                 
                 // Position tilemap in center
                 const offsetX = (800 - (mapWidth * scale)) / 2;
-                const offsetY = 80 + (500 - (mapHeight * scale)) / 2; // 80px for title
+                const offsetY = (600 - (mapHeight * scale)) / 2; // Center vertically in full canvas
                 
                 console.log(`Scaling: ${scale}, Position: (${offsetX}, ${offsetY})`);
                 console.log(`Scaled size: ${mapWidth * scale}x${mapHeight * scale}`);
