@@ -341,6 +341,17 @@
             this.load.image('tiles', 'assets/Full.png');
             this.load.tilemapTiledJSON('level1', 'assets/level1.tmj');
             
+            // Load player character sprite sheets
+            console.log('🏃 Loading character sprite sheets...');
+            this.load.spritesheet('soldier', 'assets/soldier.png', { 
+                frameWidth: 64, 
+                frameHeight: 64 
+            });
+            this.load.spritesheet('orc', 'assets/orc.png', { 
+                frameWidth: 64, 
+                frameHeight: 64 
+            });
+            
             // Keep loading individual tiles as backup for fallback mode
             this.load.image('floor', 'assets/tiles/floor.png');
             this.load.image('wall', 'assets/tiles/wall.png');
@@ -361,12 +372,49 @@
         function create() {
             gameScene = this;
             
+            // Create character animations
+            createCharacterAnimations(this);
+            
             // Set up keyboard input
             setupKeyboardInput(this);
             
             // If we already have game state, render it
             if (serverGameState) {
                 renderInitialGame();
+            }
+        }
+
+        function createCharacterAnimations(scene) {
+            console.log('🎭 Creating character animations...');
+            
+            // Soldier (Player 1) animations
+            if (scene.textures.exists('soldier')) {
+                // Walking animation (second row - frames 4-7)
+                scene.anims.create({
+                    key: 'soldier-walk',
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 4, end: 7 }),
+                    frameRate: 8,
+                    repeat: -1
+                });
+                
+                console.log('✅ Soldier animations created');
+            } else {
+                console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
+            }
+            
+            // Orc (Player 2) animations  
+            if (scene.textures.exists('orc')) {
+                // Walking animation (second row - frames 4-7)
+                scene.anims.create({
+                    key: 'orc-walk',
+                    frames: scene.anims.generateFrameNumbers('orc', { start: 4, end: 7 }),
+                    frameRate: 8,
+                    repeat: -1
+                });
+                
+                console.log('✅ Orc animations created');
+            } else {
+                console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
             }
         }
 
@@ -634,19 +682,70 @@
             for (const [playerId, player] of Object.entries(serverGameState.players)) {
                 const coords = getTilePixelPosition(player.x, player.y);
                 
-                // Different colors for different players
-                const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                // Determine sprite key and animations based on player
+                let spriteKey, walkAnim;
+                if (playerId === 'player1') {
+                    spriteKey = 'soldier';
+                    walkAnim = 'soldier-walk';
+                } else {
+                    spriteKey = 'orc';
+                    walkAnim = 'orc-walk';
+                }
                 
-                const sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
-                sprite.setStrokeStyle(2, 0xffffff);
-                sprite.setDepth(100);
+                // Try to create animated sprite, fallback to rectangle if sprite not available
+                let sprite;
+                if (gameScene.textures.exists(spriteKey)) {
+                    // Create animated sprite at tile center
+                    sprite = gameScene.add.sprite(coords.x, coords.y, spriteKey);
+                    
+                    // Set origin to center
+                    sprite.setOrigin(0.5, 0.5);
+                    
+                    // Scale the sprite to fit the tile size (64x64 sprite -> tile size)
+                    const scale = (coords.tileSize * 2.0) / 64; // Use 200% of tile size for better visibility
+                    sprite.setScale(scale);
+                    sprite.setDepth(100);
+                    
+                    // Set to idle frame (frame 0) - character will be still
+                    sprite.setFrame(0);
+                    
+                    // MANUAL OFFSET: Adjust sprite position to center character properly on tile
+                    // The character artwork appears to be positioned at bottom-right of sprite frame
+                    const offsetX = -16 * scale; // Move left to center horizontally (increased)
+                    const offsetY = -20 * scale; // Move up to center vertically (increased)
+                    sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
+                    
+                    console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
+                    
+                    // Store animation references for state management
+                    sprite.walkAnim = walkAnim;
+                    sprite.isWalking = false;
+                    
+                    // Store initial position to prevent walking animation on first render
+                    sprite.initialX = sprite.x;
+                    sprite.initialY = sprite.y;
+                    
+                    // Ensure sprite starts with no tint
+                    sprite.clearTint();
+                    
+                    console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
+                } else {
+                    // Fallback to colored rectangle
+                    console.warn(`⚠️ Sprite '${spriteKey}' not available, using rectangle fallback for ${playerId}`);
+                    const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                    sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
+                    sprite.setStrokeStyle(2, 0xffffff);
+                    sprite.setDepth(100);
+                }
                 
                 playerSprites[playerId] = sprite;
                 
-                // Add label above player
-                const label = gameScene.add.text(coords.x, coords.y - 30, playerId.toUpperCase(), {
+                // Add label above tile center (not relative to offset sprite)
+                const label = gameScene.add.text(coords.x, coords.y - 40, playerId.toUpperCase(), {
                     fontSize: '12px',
-                    fill: '#ffffff'
+                    fill: '#ffffff',
+                    stroke: '#000000',
+                    strokeThickness: 2
                 }).setOrigin(0.5);
                 label.setDepth(101);
                 
@@ -662,8 +761,16 @@
                 const offsetX = layer.x;
                 const offsetY = layer.y;
                 
-                const pixelX = offsetX + (tileX * currentTilemap.tileWidth * scale) + (currentTilemap.tileWidth * scale / 2);
-                const pixelY = offsetY + (tileY * currentTilemap.tileHeight * scale) + (currentTilemap.tileHeight * scale / 2);
+                // Position calculation for sprites
+                
+                // Ensure coordinates are within map bounds
+                const clampedX = Math.max(0, Math.min(tileX, currentTilemap.width - 1));
+                const clampedY = Math.max(0, Math.min(tileY, currentTilemap.height - 1));
+                
+                const pixelX = offsetX + (clampedX * currentTilemap.tileWidth * scale) + (currentTilemap.tileWidth * scale / 2);
+                const pixelY = offsetY + (clampedY * currentTilemap.tileHeight * scale) + (currentTilemap.tileHeight * scale / 2);
+                
+                // Calculate final pixel position
                 
                 return {
                     x: pixelX,
@@ -728,22 +835,73 @@
             // Check for new players and create sprites for them
             for (const [playerId, player] of Object.entries(serverGameState.players)) {
                 if (!playerSprites[playerId]) {
-                    // New player detected - create sprite and label
+                    // New player detected - create sprite and label using the main function
                     const coords = getTilePixelPosition(player.x, player.y);
                     
-                    // Different colors for different players
-                    const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                    // Determine sprite key and animations based on player
+                    let spriteKey, walkAnim;
+                    if (playerId === 'player1') {
+                        spriteKey = 'soldier';
+                        walkAnim = 'soldier-walk';
+                    } else {
+                        spriteKey = 'orc';
+                        walkAnim = 'orc-walk';
+                    }
                     
-                    const sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
-                    sprite.setStrokeStyle(2, 0xffffff);
-                    sprite.setDepth(100);
+                    // Try to create animated sprite, fallback to rectangle if sprite not available
+                    let sprite;
+                    if (gameScene.textures.exists(spriteKey)) {
+                        // Create animated sprite at tile center
+                        sprite = gameScene.add.sprite(coords.x, coords.y, spriteKey);
+                        
+                        // Set origin to center
+                        sprite.setOrigin(0.5, 0.5);
+                        
+                        // Scale the sprite to fit the tile size (64x64 sprite -> tile size)
+                        const scale = (coords.tileSize * 2.0) / 64; // Use 200% of tile size for better visibility
+                        sprite.setScale(scale);
+                        sprite.setDepth(100);
+                        
+                        // Set to idle frame (frame 0) - character will be still
+                        sprite.setFrame(0);
+                        
+                        // MANUAL OFFSET: Adjust sprite position to center character properly on tile
+                        // The character artwork appears to be positioned at bottom-right of sprite frame
+                        const offsetX = -16 * scale; // Move left to center horizontally (increased)
+                        const offsetY = -20 * scale; // Move up to center vertically (increased)
+                        sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
+                        
+                        console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
+                        
+                        // Store animation references for state management
+                        sprite.walkAnim = walkAnim;
+                        sprite.isWalking = false;
+                        
+                        // Store initial position to prevent walking animation on first render
+                        sprite.initialX = sprite.x;
+                        sprite.initialY = sprite.y;
+                        
+                        // Ensure sprite starts with no tint
+                        sprite.clearTint();
+                        
+                        console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
+                    } else {
+                        // Fallback to colored rectangle
+                        console.warn(`⚠️ Sprite '${spriteKey}' not available, using rectangle fallback for ${playerId}`);
+                        const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
+                        sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
+                        sprite.setStrokeStyle(2, 0xffffff);
+                        sprite.setDepth(100);
+                    }
                     
                     playerSprites[playerId] = sprite;
                     
-                    // Add label above player
-                    const label = gameScene.add.text(coords.x, coords.y - 30, playerId.toUpperCase(), {
+                    // Add label above tile center (not relative to offset sprite)
+                    const label = gameScene.add.text(coords.x, coords.y - 40, playerId.toUpperCase(), {
                         fontSize: '12px',
-                        fill: '#ffffff'
+                        fill: '#ffffff',
+                        stroke: '#000000',
+                        strokeThickness: 2
                     }).setOrigin(0.5);
                     label.setDepth(101);
                     
@@ -780,32 +938,76 @@
                 if (sprite && label) {
                     const coords = getTilePixelPosition(player.x, player.y);
                     
-                    sprite.setPosition(coords.x, coords.y);
-                    label.setPosition(coords.x, coords.y - 30);
+                    // Check if player position changed to trigger walking animation
+                    // Use stored initial position for first render, then track actual changes
+                    const oldX = sprite.initialX !== undefined ? sprite.initialX : sprite.x;
+                    const oldY = sprite.initialY !== undefined ? sprite.initialY : sprite.y;
+                    const targetX = coords.x + (-16 * ((coords.tileSize * 2.0) / 64));
+                    const targetY = coords.y + (-20 * ((coords.tileSize * 2.0) / 64));
+                    const positionChanged = (Math.abs(oldX - targetX) > 1 || Math.abs(oldY - targetY) > 1);
                     
-                    // Highlight current player's turn with visual effects
+                    // Apply offset to sprite only, keep label above tile center
+                    const offsetX = -16 * ((coords.tileSize * 2.0) / 64); // Same offset calculation (updated scale)
+                    const offsetY = -20 * ((coords.tileSize * 2.0) / 64); // Same offset calculation (updated scale)
+                    const spriteX = coords.x + offsetX;
+                    const spriteY = coords.y + offsetY;
+                    
+                    sprite.setPosition(spriteX, spriteY);
+                    label.setPosition(coords.x, coords.y - 40); // Label stays above tile center
+                    
+                    // Update stored position for next comparison
+                    sprite.initialX = sprite.x;
+                    sprite.initialY = sprite.y;
+                    
+                    // Handle animation states for animated sprites
+                    if (sprite.walkAnim) {
+                        if (positionChanged && !sprite.isWalking) {
+                            // Start walking animation
+                            sprite.play(sprite.walkAnim);
+                            sprite.isWalking = true;
+                            
+                            // Return to idle frame (frame 0) after movement animation completes
+                            setTimeout(() => {
+                                if (sprite && sprite.active) {
+                                    sprite.stop(); // Stop the walking animation
+                                    sprite.setFrame(0); // Set to idle frame (still character)
+                                    sprite.isWalking = false;
+                                }
+                            }, 500); // 500ms walking animation duration
+                        }
+                    }
+                    
+                    // Highlight current player's turn - only highlight the text label
                     if (serverGameState.gameStarted && serverGameState.currentPlayerTurn === playerId) {
-                        // Make current player's sprite more prominent
-                        sprite.setScale(1.1); // Slightly larger
-                        sprite.setStrokeStyle(3, 0xffff00); // Yellow glow
-                        label.setStyle({ fontSize: '14px', fill: '#ffff00', fontWeight: 'bold' }); // Yellow label
-                                         } else {
-                         // Normal appearance for waiting player
-                         sprite.setScale(1.0);
-                         sprite.setStrokeStyle(2, 0xffffff); // White border
-                         label.setStyle({ fontSize: '12px', fill: '#ffffff', fontWeight: 'normal' }); // White label
-                     }
-                     
-                     // Special victory effects for player sprites
-                     if (serverGameState.gameCompleted) {
-                         sprite.setScale(1.3); // Make both players even larger for final victory
-                         sprite.setStrokeStyle(5, 0xff6b35); // Bright orange border for final victory
-                         label.setStyle({ fontSize: '18px', fill: '#ff6b35', fontWeight: 'bold' }); // Orange final victory labels
-                     } else if (serverGameState.gameWon) {
-                         sprite.setScale(1.2); // Make both players larger
-                         sprite.setStrokeStyle(4, 0xffd700); // Gold border for victory
-                         label.setStyle({ fontSize: '16px', fill: '#ffd700', fontWeight: 'bold' }); // Gold victory labels
-                     }
+                        // Highlight the player label with bright yellow and bold text
+                        label.setStyle({ fontSize: '16px', fill: '#ffff00', fontWeight: 'bold', stroke: '#000000', strokeThickness: 3 });
+                    } else {
+                        // Normal appearance for waiting player label
+                        label.setStyle({ fontSize: '12px', fill: '#ffffff', fontWeight: 'normal', stroke: '#000000', strokeThickness: 2 });
+                    }
+                    
+                    // Special victory effects for player sprites
+                    if (serverGameState.gameCompleted) {
+                        if (sprite.setStrokeStyle) {
+                            sprite.setScale(1.3); // Make both players even larger for final victory
+                            sprite.setStrokeStyle(5, 0xff6b35); // Bright orange border for final victory
+                        } else {
+                            const baseScale = (coords.tileSize * 2.0) / 64;
+                            sprite.setScale(baseScale * 1.3);
+                            sprite.setTint(0xff6b35); // Orange tint for victory
+                        }
+                        label.setStyle({ fontSize: '18px', fill: '#ff6b35', fontWeight: 'bold' }); // Orange final victory labels
+                    } else if (serverGameState.gameWon) {
+                        if (sprite.setStrokeStyle) {
+                            sprite.setScale(1.2); // Make both players larger
+                            sprite.setStrokeStyle(4, 0xffd700); // Gold border for victory
+                        } else {
+                            const baseScale = (coords.tileSize * 2.0) / 64;
+                            sprite.setScale(baseScale * 1.2);
+                            sprite.setTint(0xffd700); // Gold tint for victory
+                        }
+                        label.setStyle({ fontSize: '16px', fill: '#ffd700', fontWeight: 'bold' }); // Gold victory labels
+                    }
                 }
             }
         }
@@ -818,6 +1020,24 @@
             scene.input.keyboard.on('keydown-LEFT', () => sendMoveRequest('left'));
             scene.input.keyboard.on('keydown-RIGHT', () => sendMoveRequest('right'));
             scene.input.keyboard.on('keydown-SPACE', () => sendUseItemRequest());
+        }
+
+        // Helper function to trigger walking animation for a player
+        function triggerWalkingAnimation(playerId) {
+            const sprite = playerSprites[playerId];
+            if (sprite && sprite.walkAnim && !sprite.isWalking) {
+                sprite.play(sprite.walkAnim);
+                sprite.isWalking = true;
+                
+                // Return to idle frame (frame 0) after a short duration
+                setTimeout(() => {
+                    if (sprite && sprite.active) {
+                        sprite.stop(); // Stop the walking animation
+                        sprite.setFrame(0); // Set to idle frame (still character)
+                        sprite.isWalking = false;
+                    }
+                }, 400); // 400ms walking animation
+            }
         }
 
         // Function to send move requests to server
@@ -837,6 +1057,9 @@
                     console.error('❌ Invalid direction for move request:', direction);
                     return;
                 }
+                
+                // Trigger walking animation immediately for responsive feedback
+                triggerWalkingAnimation(myPlayerId);
                 
                 console.log('Sending move request:', direction);
                 socket.emit('moveRequest', { direction: direction });
