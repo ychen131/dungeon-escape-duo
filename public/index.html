@@ -135,7 +135,18 @@
         
         socket.on('gameState', (newGameState) => {
             try {
-                console.log('Received game state:', newGameState);
+                const gameStateTimestamp = Date.now();
+                console.log(`📡 [${gameStateTimestamp}] Received game state from server:`, newGameState);
+                
+                // Debug: Log if this game state contains any player movements
+                if (serverGameState && newGameState.players) {
+                    for (const [playerId, newPlayer] of Object.entries(newGameState.players)) {
+                        const oldPlayer = serverGameState.players?.[playerId];
+                        if (oldPlayer && (oldPlayer.x !== newPlayer.x || oldPlayer.y !== newPlayer.y)) {
+                            console.log(`📡 [${gameStateTimestamp}] 🚶 ${playerId} moved from (${oldPlayer.x},${oldPlayer.y}) to (${newPlayer.x},${newPlayer.y}) - direction: ${newPlayer.lastMoveDirection}`);
+                        }
+                    }
+                }
                 
                 // Validate game state structure
                 if (!newGameState || typeof newGameState !== 'object') {
@@ -389,30 +400,30 @@
             
             // Soldier (Player 1) animations
             if (scene.textures.exists('soldier')) {
-                // Walking animation (second row - frames 4-7)
+                // TEST: Walking animation using just frame 0 (idle) to test movement issue
                 scene.anims.create({
                     key: 'soldier-walk',
-                    frames: scene.anims.generateFrameNumbers('soldier', { start: 4, end: 7 }),
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 0, end: 0 }),
                     frameRate: 8,
                     repeat: -1
                 });
                 
-                console.log('✅ Soldier animations created');
+                console.log('✅ Soldier animations created (TEST: using frame 0 only)');
             } else {
                 console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
             }
             
             // Orc (Player 2) animations  
             if (scene.textures.exists('orc')) {
-                // Walking animation (second row - frames 4-7)
+                // TEST: Walking animation using just frame 0 (idle) to test movement issue
                 scene.anims.create({
                     key: 'orc-walk',
-                    frames: scene.anims.generateFrameNumbers('orc', { start: 4, end: 7 }),
+                    frames: scene.anims.generateFrameNumbers('orc', { start: 0, end: 0 }),
                     frameRate: 8,
                     repeat: -1
                 });
                 
-                console.log('✅ Orc animations created');
+                console.log('✅ Orc animations created (TEST: using frame 0 only)');
             } else {
                 console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
             }
@@ -839,7 +850,13 @@
 
         function updateGameRendering() {
             if (!gameScene || !serverGameState) return;
-            console.log(`🔄 updateGameRendering called - players: ${Object.keys(serverGameState.players).join(', ')}`);
+            const renderTimestamp = Date.now();
+            console.log(`🔄 [${renderTimestamp}] updateGameRendering called - players: ${Object.keys(serverGameState.players).join(', ')}`);
+            
+            // Log player positions for debugging
+            for (const [playerId, player] of Object.entries(serverGameState.players)) {
+                console.log(`🔄 [${renderTimestamp}] ${playerId} server position: (${player.x}, ${player.y}), lastMove: ${player.lastMoveDirection || 'none'}`);
+            }
             
             // Update tilemap tiles if using tilemap system, otherwise re-render grid
             // DISABLED: Let the tilemap keep its original visual style
@@ -985,27 +1002,37 @@
                     
                     // Handle animation states and direction flipping for animated sprites
                     if (sprite.walkAnim) {
-                        console.log(`🎬 ${playerId} animation check: posChanged=${positionChanged}, isWalking=${sprite.isWalking}, oldTile=(${oldTileX},${oldTileY}), newTile=(${player.x},${player.y})`);
+                        const timestamp = Date.now();
+                        console.log(`🎬 [${timestamp}] ${playerId} animation check: posChanged=${positionChanged}, isWalking=${sprite.isWalking}, oldTile=(${oldTileX},${oldTileY}), newTile=(${player.x},${player.y})`);
+                        console.log(`🎬 [${timestamp}] ${playerId} current animation state: playing=${sprite.anims.isPlaying}, currentAnim=${sprite.anims.currentAnim?.key || 'none'}, frame=${sprite.frame.name}`);
                         
                         if (positionChanged && !sprite.isWalking) {
-                            console.log(`🎬 Starting animation for ${playerId}`);
+                            console.log(`🎬 [${timestamp}] 🟢 STARTING animation for ${playerId} - setting isWalking=true`);
                             // Start walking animation
                             sprite.play(sprite.walkAnim);
                             sprite.isWalking = true;
                             
+                            // Store timeout ID to prevent multiple timeouts
+                            if (sprite.animationTimeout) {
+                                console.log(`🎬 [${timestamp}] ⚠️ Clearing existing timeout for ${playerId}`);
+                                clearTimeout(sprite.animationTimeout);
+                            }
+                            
                             // Return to idle frame (frame 0) after movement animation completes
-                            setTimeout(() => {
+                            sprite.animationTimeout = setTimeout(() => {
                                 if (sprite && sprite.active) {
-                                    console.log(`🎬 Stopping animation for ${playerId}`);
+                                    const endTimestamp = Date.now();
+                                    console.log(`🎬 [${endTimestamp}] 🔴 STOPPING animation for ${playerId} after ${endTimestamp - timestamp}ms - setting isWalking=false`);
                                     sprite.stop(); // Stop the walking animation
                                     sprite.setFrame(0); // Set to idle frame (still character)
                                     sprite.isWalking = false;
+                                    sprite.animationTimeout = null;
                                 }
                             }, 500); // 500ms walking animation duration
                         } else if (positionChanged && sprite.isWalking) {
-                            console.log(`⚠️ ${playerId} position changed while already animating - ignoring`);
+                            console.log(`🎬 [${timestamp}] ⚠️ ${playerId} position changed while already animating - IGNORING (preventing double animation)`);
                         } else if (!positionChanged) {
-                            console.log(`🎬 ${playerId} no position change detected`);
+                            console.log(`🎬 [${timestamp}] ${playerId} no position change detected - no animation needed`);
                         }
                         
                         // Handle sprite flipping based on movement direction
