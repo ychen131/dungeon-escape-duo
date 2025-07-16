@@ -661,6 +661,7 @@ io.on('connection', socket => {
       socketId: socket.id,
       x: startingPositions[playerId].x,
       y: startingPositions[playerId].y,
+      lastMoveDirection: null, // Track direction for sprite flipping
     };
 
     if (isReconnection) {
@@ -903,11 +904,12 @@ io.on('connection', socket => {
 
         // Exit tiles are walkable (no blocking needed)
 
-        // Valid move - update player position in game state
+        // Valid move - update player position and direction in game state
         player.x = newX;
         player.y = newY;
+        player.lastMoveDirection = direction; // Store direction for sprite flipping
 
-        console.log(`${playerId} moved to (${newX}, ${newY})`);
+        console.log(`${playerId} moved to (${newX}, ${newY}) facing ${direction}`);
 
         // Check for win condition after the move
         const gameWon = checkWinCondition();

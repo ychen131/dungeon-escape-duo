@@ -725,8 +725,15 @@
                     sprite.initialX = sprite.x;
                     sprite.initialY = sprite.y;
                     
-                    // Ensure sprite starts with no tint
+                    // Ensure sprite starts with no tint and proper flip state
                     sprite.clearTint();
+                    
+                    // Initialize flip state based on starting direction (if any)
+                    if (player.lastMoveDirection === 'left') {
+                        sprite.setFlipX(true);
+                    } else {
+                        sprite.setFlipX(false); // Default to facing right
+                    }
                     
                     console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
                 } else {
@@ -881,8 +888,15 @@
                         sprite.initialX = sprite.x;
                         sprite.initialY = sprite.y;
                         
-                        // Ensure sprite starts with no tint
+                        // Ensure sprite starts with no tint and proper flip state
                         sprite.clearTint();
+                        
+                        // Initialize flip state based on starting direction (if any)
+                        if (player.lastMoveDirection === 'left') {
+                            sprite.setFlipX(true);
+                        } else {
+                            sprite.setFlipX(false); // Default to facing right
+                        }
                         
                         console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
                     } else {
@@ -959,7 +973,7 @@
                     sprite.initialX = sprite.x;
                     sprite.initialY = sprite.y;
                     
-                    // Handle animation states for animated sprites
+                    // Handle animation states and direction flipping for animated sprites
                     if (sprite.walkAnim) {
                         if (positionChanged && !sprite.isWalking) {
                             // Start walking animation
@@ -974,6 +988,25 @@
                                     sprite.isWalking = false;
                                 }
                             }, 500); // 500ms walking animation duration
+                        }
+                        
+                        // Handle sprite flipping based on movement direction
+                        if (player.lastMoveDirection) {
+                            switch (player.lastMoveDirection) {
+                                case 'left':
+                                    // Flip sprite to face left
+                                    sprite.setFlipX(true);
+                                    break;
+                                case 'right':
+                                    // Face normal direction (right)
+                                    sprite.setFlipX(false);
+                                    break;
+                                case 'up':
+                                case 'down':
+                                    // Keep current flip state for up/down movement
+                                    // Don't change flip - character maintains last left/right direction
+                                    break;
+                            }
                         }
                     }
                     
