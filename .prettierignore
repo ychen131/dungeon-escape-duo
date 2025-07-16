@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+dist/
+build/
+*.min.js
+package-lock.json
+public/assets/
+*.tmj
+*.png 
