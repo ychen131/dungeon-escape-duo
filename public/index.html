@@ -79,8 +79,39 @@
         let gameScene = null;
         let playerSprites = {};
         let gridTiles = []; // Track grid tiles for clearing
+        let tilemapLayers = []; // Track tilemap layers
+        let currentTilemap = null; // Current tilemap instance
         let statusElement = document.getElementById('status');
         let itemDisplayElement = document.getElementById('item-display');
+        
+        // Tilemap tile ID to game logic mapping
+        // Based on careful analysis of the Cardinal Zebra tileset and layer data
+        const TILEMAP_TO_LOGIC = {
+            // Walls (gray brick tiles from the tileset)
+            1: 1, 5: 1, 6: 1, 8: 1, 9: 1, 10: 1, 12: 1, 13: 1, 15: 1, 29: 1, 30: 1, 34: 1,
+            // Floors (purple cracked floor tiles)  
+            16: 0, 17: 0, 18: 0, 19: 0, 23: 0, 25: 0, 26: 0,
+            // Fire hazards (torch tiles) - from Layer 2
+            7: 2,  // Torch tiles
+            2: 2,  // Alternative torch tile
+            // Chasms/water (barrel/pot tiles) - from Layer 2
+            41: 3, 42: 3,  // Barrel/pot tiles that represent chasms
+            // Floor tiles that were mistakenly identified as chasms
+            43: 0, 44: 0,  // These are actually floor tiles, not chasms
+            // Exit (chest/door tile) - from Layer 2
+            49: 4,
+            // Empty tiles (voids) become walls - impassable black space
+            0: 1
+        };
+        
+        // Reverse mapping for logic to tilemap rendering
+        const LOGIC_TO_TILEMAP = {
+            0: 16, // Floor -> basic floor tile
+            1: 1,  // Wall -> basic wall tile
+            2: 7,  // Fire -> fire tile
+            3: 41, // Chasm -> water tile
+            4: 49  // Exit -> special tile
+        };
         
         // Socket event handlers
         socket.on('connect', () => {
@@ -290,17 +321,41 @@
             width: 800,
             height: 600,
             parent: 'game',
-            backgroundColor: '#34495e',
+            backgroundColor: '#000000', // Black background outside map
             scene: {
                 preload: preload,
                 create: create,
                 update: update
+            },
+            render: {
+                pixelArt: true, // Prevent blurring on pixel art
+                antialias: false
             }
         };
 
         // Phaser 3 Scene Functions
         function preload() {
-            // Preload assets (none for now)
+            console.log('🎮 Loading game assets...');
+            
+            // Load tileset and tilemap
+            this.load.image('tiles', 'assets/Full.png');
+            this.load.tilemapTiledJSON('level1', 'assets/level1.tmj');
+            
+            // Keep loading individual tiles as backup for fallback mode
+            this.load.image('floor', 'assets/tiles/floor.png');
+            this.load.image('wall', 'assets/tiles/wall.png');
+            this.load.image('fire', 'assets/tiles/fire.png');
+            this.load.image('water', 'assets/tiles/water.png');
+            this.load.image('exit', 'assets/tiles/exit.png');
+            
+            // Add error handling for failed loads
+            this.load.on('loaderror', (file) => {
+                console.error(`❌ Failed to load: ${file.key} from ${file.url}`);
+            });
+            
+            this.load.on('complete', () => {
+                console.log('✅ All assets loaded successfully');
+            });
         }
 
         function create() {
@@ -340,6 +395,8 @@
             gameScene.children.removeAll();
             playerSprites = {};
             gridTiles = []; // Clear grid tiles array
+            tilemapLayers = []; // Clear tilemap layers
+            currentTilemap = null; // Clear current tilemap
             
             // Re-add title
             gameScene.add.text(400, 50, 'Dungeon Escape Duo', {
@@ -347,8 +404,11 @@
                 fill: '#ecf0f1'
             }).setOrigin(0.5);
             
-            // Render the dungeon grid
-            renderDungeonGrid();
+            // Try to render using tilemap first, fallback to grid if it fails
+            if (!renderTilemap()) {
+                console.log('Tilemap rendering failed, falling back to grid rendering');
+                renderDungeonGrid();
+            }
             
             // Create player sprites
             createPlayerSprites();
@@ -388,35 +448,53 @@
                     // Get the tile type from the dungeon layout
                     const tileType = dungeonLayout[row][col];
                     
-                    // Calculate pixel position
-                    const x = startX + (col * TILE_SIZE);
-                    const y = startY + (row * TILE_SIZE);
+                    // Calculate pixel position for sprite (centered)
+                    const x = startX + (col * TILE_SIZE) + (TILE_SIZE / 2);
+                    const y = startY + (row * TILE_SIZE) + (TILE_SIZE / 2);
                     
-                                         // Choose color based on tile type
-                     let color;
-                     if (tileType === 0) {
-                         color = 0x95a5a6; // Light grey for floor tiles
-                     } else if (tileType === 1) {
-                         color = 0x2c3e50; // Dark grey for wall tiles
-                     } else if (tileType === 2) {
-                         color = 0xe74c3c; // Red for fire hazard
-                     } else if (tileType === 3) {
-                         color = 0x8e44ad; // Purple for chasm
-                     } else if (tileType === 4) {
-                         color = 0x27ae60; // Green for exit tiles
-                     }
+                    // Choose sprite based on tile type
+                    let spriteKey;
+                    if (tileType === 0) {
+                        spriteKey = 'floor'; // Floor tiles
+                    } else if (tileType === 1) {
+                        spriteKey = 'wall'; // Wall tiles
+                    } else if (tileType === 2) {
+                        spriteKey = 'fire'; // Fire hazard
+                    } else if (tileType === 3) {
+                        spriteKey = 'water'; // Water/chasm hazard
+                    } else if (tileType === 4) {
+                        spriteKey = 'exit'; // Exit tiles
+                    }
                     
-                    // Create a rectangle for this tile
-                    const tile = gameScene.add.rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, color);
-                    tile.setOrigin(0, 0);
+                    // Create a sprite for this tile with fallback to colored rectangles
+                    let tile;
+                    try {
+                        // Try to create sprite first
+                        tile = gameScene.add.image(x, y, spriteKey);
+                        
+                        // Scale the sprite to fit our tile size (32x32 tileset -> 50px tiles)
+                        const scale = TILE_SIZE / 32; // Scale factor from 32px to TILE_SIZE
+                        tile.setScale(scale);
+                    } catch (error) {
+                        // Fallback to colored rectangles if sprites not loaded
+                        console.log(`Sprite '${spriteKey}' not found, using colored rectangle fallback`);
+                        
+                        // Fallback colors (same as before)
+                        let color;
+                        if (tileType === 0) color = 0x95a5a6; // Light grey for floor
+                        else if (tileType === 1) color = 0x2c3e50; // Dark grey for walls
+                        else if (tileType === 2) color = 0xe74c3c; // Red for fire
+                        else if (tileType === 3) color = 0x8e44ad; // Purple for water
+                        else if (tileType === 4) color = 0x27ae60; // Green for exit
+                        
+                        // Create rectangle at top-left position (not centered)
+                        const rectX = startX + (col * TILE_SIZE);
+                        const rectY = startY + (row * TILE_SIZE);
+                        tile = gameScene.add.rectangle(rectX, rectY, TILE_SIZE - 2, TILE_SIZE - 2, color);
+                        tile.setOrigin(0, 0);
+                    }
+                    
                     gridTiles.push(tile); // Track for clearing later
-                    
-                    // Add a subtle border effect
-                    const border = gameScene.add.rectangle(x, y, TILE_SIZE, TILE_SIZE);
-                    border.setStrokeStyle(1, 0x34495e);
-                    border.setOrigin(0, 0);
-                    border.setFillStyle();
-                    gridTiles.push(border); // Track for clearing later
                 }
             }
             
@@ -427,28 +505,158 @@
             }
         }
 
+        function renderTilemap() {
+            try {
+                if (!gameScene) {
+                    console.warn('⚠️  Cannot render tilemap: missing scene');
+                    return false;
+                }
+                
+                // Check if tileset image loaded
+                if (!gameScene.textures.exists('tiles')) {
+                    console.warn('⚠️  Tileset image "tiles" not loaded');
+                    return false;
+                }
+                
+                // Try to create tilemap from loaded data
+                const map = gameScene.make.tilemap({ key: 'level1' });
+                if (!map) {
+                    console.warn('⚠️  Failed to create tilemap');
+                    return false;
+                }
+                
+                console.log(`📋 Tilemap created: ${map.width}x${map.height}, layers: ${map.layers.length}`);
+                
+                // Add tileset to the map - make sure the name matches the tileset name in the TMJ file
+                const tileset = map.addTilesetImage('Full', 'tiles');
+                if (!tileset) {
+                    console.warn('⚠️  Failed to add tileset to map');
+                    console.log('Available tilesets in map:', map.tilesets.map(ts => ts.name));
+                    return false;
+                }
+                
+                console.log(`🎨 Tileset added: ${tileset.name}, tiles: ${tileset.total}`);
+                
+                // Create layers from tilemap
+                const backgroundLayer = map.createLayer('Tile Layer 1', tileset);
+                const middleLayer = map.createLayer('Tile Layer 2', tileset);
+                const foregroundLayer = map.createLayer('Tile Layer 3', tileset);
+                
+                if (!backgroundLayer) {
+                    console.warn('⚠️  Failed to create tilemap layers');
+                    return false;
+                }
+                
+                console.log(`🎬 Layers created: ${[backgroundLayer, middleLayer, foregroundLayer].filter(l => l).length} total`);
+                
+                // Store references for cleanup
+                currentTilemap = map;
+                tilemapLayers = [backgroundLayer, middleLayer, foregroundLayer].filter(layer => layer);
+                
+                // Calculate scaling and positioning to fit game area
+                const mapWidth = map.width * map.tileWidth;   // Should be 12 * 32 = 384px
+                const mapHeight = map.height * map.tileHeight; // Should be 9 * 32 = 288px
+                
+                console.log(`Map dimensions: ${map.width}x${map.height} tiles, ${mapWidth}x${mapHeight} pixels`);
+                
+                // Target area (leave space for title and UI)
+                const targetWidth = 800;
+                const targetHeight = 500; // Leave space for title and status
+                
+                // Calculate scale to fit
+                const scaleX = targetWidth / mapWidth;
+                const scaleY = targetHeight / mapHeight;
+                const scale = Math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
+                
+                // Position tilemap in center
+                const offsetX = (800 - (mapWidth * scale)) / 2;
+                const offsetY = 80 + (500 - (mapHeight * scale)) / 2; // 80px for title
+                
+                console.log(`Scaling: ${scale}, Position: (${offsetX}, ${offsetY})`);
+                console.log(`Scaled size: ${mapWidth * scale}x${mapHeight * scale}`);
+                
+                // Apply scaling and positioning to all layers
+                tilemapLayers.forEach(layer => {
+                    layer.setScale(scale);
+                    layer.setPosition(offsetX, offsetY);
+                });
+                
+                console.log(`✅ Tilemap rendered successfully (${map.width}x${map.height}, scale: ${scale.toFixed(2)})`);
+                
+                // Update tilemap to match server game state (not the other way around!)
+                // DISABLED: This overwrites the nice tilemap visuals with basic tiles
+                /*if (serverGameState && serverGameState.dungeonLayout) {
+                    updateTilemapFromGameState(map);
+                }*/
+                
+                return true;
+                
+            } catch (error) {
+                console.error('❌ Error rendering tilemap:', error);
+                return false;
+            }
+        }
+
+        function updateTilemapFromGameState(map) {
+            try {
+                console.log('🔄 Updating tilemap to match server game state...');
+                
+                // Update tilemap tiles to match server's parsed game state
+                const serverLayout = serverGameState.dungeonLayout;
+                const layer = tilemapLayers[0]; // Use first layer for updates
+                
+                if (!layer || !serverLayout) {
+                    console.warn('⚠️ Cannot update tilemap: missing layer or server layout');
+                    return;
+                }
+                
+                // Update each tile in the tilemap to match server logic
+                for (let y = 0; y < serverGameState.gridHeight; y++) {
+                    for (let x = 0; x < serverGameState.gridWidth; x++) {
+                        if (y < serverLayout.length && x < serverLayout[y].length) {
+                            const logicType = serverLayout[y][x];
+                            const tileId = LOGIC_TO_TILEMAP[logicType] || 16; // Default to floor
+                            
+                            // Set the tile in the tilemap
+                            layer.putTileAt(tileId, x, y);
+                        }
+                    }
+                }
+                
+                console.log(`✅ Updated tilemap tiles to match server state (${serverGameState.gridWidth}x${serverGameState.gridHeight})`);
+                console.log('🔍 Server layout preview:');
+                for (let y = 0; y < Math.min(serverGameState.gridHeight, 5); y++) {
+                    let row = '';
+                    for (let x = 0; x < Math.min(serverGameState.gridWidth, 15); x++) {
+                        const tile = serverLayout[y][x];
+                        row += tile === 0 ? '.' : tile === 1 ? '#' : tile === 2 ? 'F' : tile === 3 ? 'W' : tile === 4 ? 'E' : '?';
+                    }
+                    console.log(`Row ${y}: ${row}`);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error updating tilemap from game state:', error);
+            }
+        }
+
         function createPlayerSprites() {
             if (!gameScene || !serverGameState) return;
             
-            const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
-            const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
-            
             // Create sprites for all players
             for (const [playerId, player] of Object.entries(serverGameState.players)) {
-                const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
-                const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                const coords = getTilePixelPosition(player.x, player.y);
                 
                 // Different colors for different players
                 const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
                 
-                const sprite = gameScene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, color);
+                const sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
                 sprite.setStrokeStyle(2, 0xffffff);
                 sprite.setDepth(100);
                 
                 playerSprites[playerId] = sprite;
                 
                 // Add label above player
-                const label = gameScene.add.text(pixelX, pixelY - 30, playerId.toUpperCase(), {
+                const label = gameScene.add.text(coords.x, coords.y - 30, playerId.toUpperCase(), {
                     fontSize: '12px',
                     fill: '#ffffff'
                 }).setOrigin(0.5);
@@ -458,33 +666,94 @@
             }
         }
 
+        function getTilePixelPosition(tileX, tileY) {
+            // If using tilemap, calculate position based on tilemap scaling
+            if (currentTilemap && tilemapLayers.length > 0) {
+                const layer = tilemapLayers[0]; // Use first layer for positioning reference
+                const scale = layer.scaleX;
+                const offsetX = layer.x;
+                const offsetY = layer.y;
+                
+                const pixelX = offsetX + (tileX * currentTilemap.tileWidth * scale) + (currentTilemap.tileWidth * scale / 2);
+                const pixelY = offsetY + (tileY * currentTilemap.tileHeight * scale) + (currentTilemap.tileHeight * scale / 2);
+                
+                return {
+                    x: pixelX,
+                    y: pixelY,
+                    tileSize: currentTilemap.tileWidth * scale
+                };
+            } else {
+                // Fallback to original grid positioning
+                const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
+                const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
+                
+                return {
+                    x: startX + (tileX * TILE_SIZE) + (TILE_SIZE / 2),
+                    y: startY + (tileY * TILE_SIZE) + (TILE_SIZE / 2),
+                    tileSize: TILE_SIZE
+                };
+            }
+        }
+
+        function updateTilemapTiles() {
+            if (!currentTilemap || !tilemapLayers.length || !serverGameState.dungeonLayout) return;
+            
+            try {
+                // Update tiles based on current game state
+                for (let y = 0; y < serverGameState.gridHeight; y++) {
+                    for (let x = 0; x < serverGameState.gridWidth; x++) {
+                        if (y < serverGameState.dungeonLayout.length && x < serverGameState.dungeonLayout[y].length) {
+                            const logicType = serverGameState.dungeonLayout[y][x];
+                            const newTileId = LOGIC_TO_TILEMAP[logicType] || 16; // Default to floor
+                            
+                            // Update the tile in the appropriate layer (use first layer for game logic)
+                            const layer = tilemapLayers[0];
+                            if (layer) {
+                                const currentTile = layer.getTileAt(x, y);
+                                if (!currentTile || currentTile.index !== newTileId) {
+                                    layer.putTileAt(newTileId, x, y);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                console.log('🔄 Updated tilemap tiles from game state');
+                
+            } catch (error) {
+                console.error('❌ Error updating tilemap tiles:', error);
+            }
+        }
+
         function updateGameRendering() {
             if (!gameScene || !serverGameState) return;
             
-            // Re-render the entire grid to show tile changes (like fire being doused)
-            renderDungeonGrid();
-            
-            const startX = (800 - (serverGameState.gridWidth * TILE_SIZE)) / 2;
-            const startY = (600 - (serverGameState.gridHeight * TILE_SIZE)) / 2;
+            // Update tilemap tiles if using tilemap system, otherwise re-render grid
+            // DISABLED: Let the tilemap keep its original visual style
+            /*if (currentTilemap && tilemapLayers.length > 0) {
+                updateTilemapTiles();
+            } else {*/
+                // Re-render the entire grid to show tile changes (like fire being doused)
+                // For now, don't update tilemap dynamically
+            /*}*/
             
             // Check for new players and create sprites for them
             for (const [playerId, player] of Object.entries(serverGameState.players)) {
                 if (!playerSprites[playerId]) {
                     // New player detected - create sprite and label
-                    const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
-                    const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                    const coords = getTilePixelPosition(player.x, player.y);
                     
                     // Different colors for different players
                     const color = playerId === 'player1' ? 0x3498db : 0xe74c3c; // Blue for P1, Red for P2
                     
-                    const sprite = gameScene.add.rectangle(pixelX, pixelY, TILE_SIZE - 10, TILE_SIZE - 10, color);
+                    const sprite = gameScene.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
                     sprite.setStrokeStyle(2, 0xffffff);
                     sprite.setDepth(100);
                     
                     playerSprites[playerId] = sprite;
                     
                     // Add label above player
-                    const label = gameScene.add.text(pixelX, pixelY - 30, playerId.toUpperCase(), {
+                    const label = gameScene.add.text(coords.x, coords.y - 30, playerId.toUpperCase(), {
                         fontSize: '12px',
                         fill: '#ffffff'
                     }).setOrigin(0.5);
@@ -521,11 +790,10 @@
                 const label = playerSprites[playerId + '_label'];
                 
                 if (sprite && label) {
-                    const pixelX = startX + (player.x * TILE_SIZE) + (TILE_SIZE / 2);
-                    const pixelY = startY + (player.y * TILE_SIZE) + (TILE_SIZE / 2);
+                    const coords = getTilePixelPosition(player.x, player.y);
                     
-                    sprite.setPosition(pixelX, pixelY);
-                    label.setPosition(pixelX, pixelY - 30);
+                    sprite.setPosition(coords.x, coords.y);
+                    label.setPosition(coords.x, coords.y - 30);
                     
                     // Highlight current player's turn with visual effects
                     if (serverGameState.gameStarted && serverGameState.currentPlayerTurn === playerId) {

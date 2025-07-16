@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,8 +11,136 @@ const io = socketIo(server);
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Map Pool System - Multiple layouts organized by difficulty
-// Tile types:
+// Tilemap tile ID to game logic mapping (matches client-side mapping)
+// Based on careful analysis of the Cardinal Zebra tileset and layer data
+const TILEMAP_TO_LOGIC = {
+    // Walls (gray brick tiles from the tileset)
+    1: 1, 5: 1, 6: 1, 8: 1, 9: 1, 10: 1, 12: 1, 13: 1, 15: 1, 29: 1, 30: 1, 34: 1,
+    // Floors (purple cracked floor tiles)  
+    16: 0, 17: 0, 18: 0, 19: 0, 23: 0, 25: 0, 26: 0,
+    // Fire hazards (torch tiles) - from Layer 2
+    7: 2,  // Torch tiles
+    2: 2,  // Alternative torch tile
+    // Chasms/water (barrel/pot tiles) - from Layer 2
+    41: 3, 42: 3,  // Barrel/pot tiles that represent chasms
+    // Floor tiles that were mistakenly identified as chasms
+    43: 0, 44: 0,  // These are actually floor tiles, not chasms
+    // Exit (chest/door tile) - from Layer 2
+    49: 4,
+    // Empty tiles (voids) become walls - impassable black space
+    0: 1
+};
+
+// Tilemap parsing functions
+function loadTilemapFromFile(tilemapPath) {
+    try {
+        const tilemapData = JSON.parse(fs.readFileSync(tilemapPath, 'utf8'));
+        return parseTilemapToGameLogic(tilemapData);
+    } catch (error) {
+        console.error(`❌ Failed to load tilemap from ${tilemapPath}:`, error);
+        return null;
+    }
+}
+
+function parseTilemapToGameLogic(tilemapData) {
+    try {
+        if (!tilemapData || !tilemapData.layers || !tilemapData.width || !tilemapData.height) {
+            console.error('❌ Invalid tilemap data structure');
+            return null;
+        }
+        
+        const mapWidth = tilemapData.width;
+        const mapHeight = tilemapData.height;
+        const fullLayout = [];
+        
+        // Initialize empty layout
+        for (let y = 0; y < mapHeight; y++) {
+            fullLayout.push(new Array(mapWidth).fill(0));
+        }
+        
+        // Process each layer (later layers override earlier ones, but only if they have content)
+        for (const layer of tilemapData.layers) {
+            if (layer.type === 'tilelayer' && layer.data) {
+                for (let i = 0; i < layer.data.length; i++) {
+                    const tileId = layer.data[i];
+                    const x = i % mapWidth;
+                    const y = Math.floor(i / mapWidth);
+                    
+                    if (y < mapHeight && x < mapWidth) {
+                        if (tileId > 0) {
+                            // Non-empty tile - use it (override any previous layer)
+                            const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
+                            fullLayout[y][x] = logicType;
+                        }
+                        // If tileId is 0 (empty), leave whatever was on lower layers
+                    }
+                }
+            }
+        }
+        
+        // Skip content bounds detection - use full tilemap size
+        console.log(`✅ Parsed tilemap: ${mapWidth}x${mapHeight} (using full size)`);
+        
+        // Debug: Print the parsed layout
+        console.log('🔍 Parsed layout preview:');
+        for (let y = 0; y < Math.min(mapHeight, 10); y++) {
+            let row = '';
+            for (let x = 0; x < Math.min(mapWidth, 30); x++) {
+                const tile = fullLayout[y][x];
+                row += tile === 0 ? '.' : tile === 1 ? '#' : tile === 2 ? 'F' : tile === 3 ? 'W' : tile === 4 ? 'E' : '?';
+            }
+            console.log(`Row ${y}: ${row}`);
+        }
+        
+        return {
+            layout: fullLayout,
+            width: mapWidth,
+            height: mapHeight
+        };
+        
+    } catch (error) {
+        console.error('❌ Error parsing tilemap to game logic:', error);
+        return null;
+    }
+}
+
+// Function to detect the actual content bounds in a tilemap
+function detectContentBounds(layout) {
+    let minX = layout[0].length;
+    let maxX = -1;
+    let minY = layout.length;
+    let maxY = -1;
+    
+    // Find bounds of non-floor content (walls, hazards, exits)
+    for (let y = 0; y < layout.length; y++) {
+        for (let x = 0; x < layout[y].length; x++) {
+            const tile = layout[y][x];
+            // Consider any non-floor tile as content (walls, hazards, exits)
+            if (tile !== 0) {
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    }
+    
+    // Add 1-tile padding around content if possible
+    minX = Math.max(0, minX - 1);
+    maxX = Math.min(layout[0].length - 1, maxX + 1);
+    minY = Math.max(0, minY - 1);
+    maxY = Math.min(layout.length - 1, maxY + 1);
+    
+    // Return null if no content found
+    if (maxX < minX || maxY < minY) {
+        return null;
+    }
+    
+    return { minX, maxX, minY, maxY };
+}
+
+// Map Pool System - Tilemap files organized by difficulty
+// Tile types in game logic:
 // 0 = floor tile (walkable)
 // 1 = wall tile (not walkable)
 // 2 = fire hazard (requires "Douse Fire" item to pass)
@@ -20,42 +149,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const MAP_POOL = {
     level1: [
-        // Level 1 Layout A - Simple layout with basic hazards
-        [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1],
-            [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 1],
-            [1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-            [1, 0, 3, 0, 0, 0, 4, 0, 0, 2, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ],
-        // Level 1 Layout B - COMPLETELY DIFFERENT - Wide open with corner hazards
-        [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ],
-        // Level 1 Layout C - Bridge pattern with center hazards (FIXED - now reachable!)
-        [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 3, 0, 4, 0, 2, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ]
+        // Level 1 - Use the tilemap file for now, can add more later
+        'public/assets/level1.tmj'
+        // Future tilemaps can be added here:
+        // 'public/assets/level1_alt1.tmj',
+        // 'public/assets/level1_alt2.tmj'
     ],
     level2: [
-        // Level 2 Layout A - More complex with multiple hazards
+        // Level 2 - For now, fall back to hardcoded if no tilemap available
+        // 'public/assets/level2.tmj'
+        // Fallback to hardcoded arrays for level 2 for now
         [
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             [1, 0, 2, 0, 1, 3, 0, 2, 0, 1, 0, 1],
@@ -65,17 +168,6 @@ const MAP_POOL = {
             [1, 0, 3, 0, 2, 0, 0, 1, 0, 1, 0, 1],
             [1, 0, 1, 0, 1, 0, 4, 0, 0, 3, 0, 1],
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ],
-        // Level 2 Layout B - Gauntlet pattern with sequential challenges
-        [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 2, 3, 0, 0, 2, 3, 0, 0, 1],
-            [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1],
-            [1, 0, 0, 3, 2, 0, 0, 3, 2, 0, 0, 1],
-            [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 2, 3, 0, 4, 3, 2, 0, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         ]
     ]
 };
@@ -84,9 +176,9 @@ const MAP_POOL = {
 let currentLevel = 'level1';
 let currentMapIndex = 0;
 
-// Grid configuration
-const GRID_WIDTH = 12;
-const GRID_HEIGHT = 8;
+// Grid configuration (will be updated dynamically based on loaded map)
+let GRID_WIDTH = 12;
+let GRID_HEIGHT = 8;
 
 // Item types that players can receive
 const ITEM_TYPES = {
@@ -106,7 +198,49 @@ const TILE_TYPES = {
 // Helper function to get current map layout
 function getCurrentMap() {
     const levelMaps = MAP_POOL[currentLevel];
-    return levelMaps[currentMapIndex % levelMaps.length];
+    const mapData = levelMaps[currentMapIndex % levelMaps.length];
+    
+    // Check if it's a tilemap file path or hardcoded array
+    if (typeof mapData === 'string') {
+        // It's a tilemap file path
+        const tilemapResult = loadTilemapFromFile(mapData);
+        if (tilemapResult) {
+            // Update grid dimensions
+            GRID_WIDTH = tilemapResult.width;
+            GRID_HEIGHT = tilemapResult.height;
+            return tilemapResult.layout;
+        } else {
+            console.error(`❌ Failed to load tilemap: ${mapData}, falling back to default`);
+            // Fallback to default small map
+            GRID_WIDTH = 12;
+            GRID_HEIGHT = 8;
+            return createDefaultMap();
+        }
+    } else if (Array.isArray(mapData)) {
+        // It's a hardcoded array
+        GRID_WIDTH = mapData[0].length;
+        GRID_HEIGHT = mapData.length;
+        return mapData;
+    } else {
+        console.error(`❌ Invalid map data type: ${typeof mapData}`);
+        GRID_WIDTH = 12;
+        GRID_HEIGHT = 8;
+        return createDefaultMap();
+    }
+}
+
+// Helper function to create a default map in case of errors
+function createDefaultMap() {
+    return [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    ];
 }
 
 // Helper function to select a random map from current level
@@ -117,12 +251,12 @@ function selectRandomMapForLevel() {
     return getCurrentMap();
 }
 
-// Game state object - server is the source of truth
+// Initialize game state (will be properly set by loadNewMap)
 const gameState = {
     players: {},
-    dungeonLayout: getCurrentMap(), // Start with current map
-    gridWidth: GRID_WIDTH,
-    gridHeight: GRID_HEIGHT,
+    dungeonLayout: [], // Will be set by loadNewMap
+    gridWidth: 12, // Will be updated by loadNewMap
+    gridHeight: 8, // Will be updated by loadNewMap
     currentPlayerTurn: null, // Tracks whose turn it is: 'player1' or 'player2'
     gameStarted: false, // Tracks if both players are connected and game has begun
     playerItems: {}, // Tracks current items for each player: { player1: 'Douse Fire', player2: 'Build Bridge' }
@@ -132,11 +266,52 @@ const gameState = {
     levelProgression: 1 // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
 };
 
-// Player starting positions (design intent)
-const startingPositions = {
+// Player starting positions (will be updated based on map size)
+let startingPositions = {
     player1: { x: 1, y: 1 },
-    player2: { x: 10, y: 6 } // Back to original intended positions
+    player2: { x: 10, y: 6 }
 };
+
+// Function to find safe starting positions in the map
+function findSafeStartingPositions(dungeonLayout) {
+    const safePositions = [];
+    
+    // Find all floor tiles
+    for (let y = 0; y < dungeonLayout.length; y++) {
+        for (let x = 0; x < dungeonLayout[y].length; x++) {
+            if (dungeonLayout[y][x] === 0) { // Floor tile
+                safePositions.push({ x, y });
+            }
+        }
+    }
+    
+    if (safePositions.length >= 2) {
+        // Use first and last safe positions for maximum separation
+        const pos1 = safePositions[0];
+        const pos2 = safePositions[safePositions.length - 1];
+        
+        return {
+            player1: pos1,
+            player2: pos2
+        };
+    } else {
+        // Fallback to corners if no safe positions found
+        const width = dungeonLayout[0].length;
+        const height = dungeonLayout.length;
+        return {
+            player1: { x: 1, y: 1 },
+            player2: { x: width - 2, y: height - 2 }
+        };
+    }
+}
+
+// Function to update starting positions based on current map
+function updateStartingPositionsForMap(dungeonLayout) {
+    const newPositions = findSafeStartingPositions(dungeonLayout);
+    startingPositions = newPositions;
+    
+    console.log(`🎯 Updated starting positions: Player1(${newPositions.player1.x},${newPositions.player1.y}), Player2(${newPositions.player2.x},${newPositions.player2.y})`);
+}
 
 // Function to load a new map (for testing and level progression)
 function loadNewMap(level = null, mapIndex = null) {
@@ -154,15 +329,23 @@ function loadNewMap(level = null, mapIndex = null) {
         currentMapIndex = Math.floor(Math.random() * levelMaps.length);
     }
     
-    // Update game state with new map
-    gameState.dungeonLayout = getCurrentMap();
+    // Load the map (this updates GRID_WIDTH and GRID_HEIGHT)
+    const newDungeonLayout = getCurrentMap();
+    
+    // Update game state with new map and dimensions
+    gameState.dungeonLayout = newDungeonLayout;
+    gameState.gridWidth = GRID_WIDTH;
+    gameState.gridHeight = GRID_HEIGHT;
     gameState.currentLevel = currentLevel;
     gameState.mapIndex = currentMapIndex;
     
-    // Ensure starting positions are safe
+    // Update starting positions for the new map size
+    updateStartingPositionsForMap(newDungeonLayout);
+    
+    // Ensure starting positions are safe (this may override the automatic detection if needed)
     ensureSafeStartingPositions();
     
-    console.log(`🗺️  Loaded new map: ${currentLevel} - Layout ${currentMapIndex + 1}/${MAP_POOL[currentLevel].length}`);
+    console.log(`🗺️  Loaded new map: ${currentLevel} - Layout ${currentMapIndex + 1}/${MAP_POOL[currentLevel].length} (${GRID_WIDTH}x${GRID_HEIGHT})`);
 }
 
 // Function to ensure starting positions are safe (no hazards)
@@ -187,8 +370,9 @@ function ensureSafeStartingPositions() {
     console.log('Starting position validation complete');
 }
 
-// Initialize with random Level 1 map on server startup
-loadNewMap('level1');
+// Initialize with Level 1 tilemap on server startup
+console.log('🎮 Initializing server with tilemap system...');
+loadNewMap('level1', 0); // Load first map from level1 (the tilemap)
 
 // Console commands for testing different maps
 console.log('\n🎮 TESTING COMMANDS:');
@@ -525,7 +709,7 @@ io.on('connection', (socket) => {
             
             for (const pos of adjacentPositions) {
                 // Check bounds
-                if (pos.x < 0 || pos.x >= GRID_WIDTH || pos.y < 0 || pos.y >= GRID_HEIGHT) {
+                if (pos.x < 0 || pos.x >= gameState.gridWidth || pos.y < 0 || pos.y >= gameState.gridHeight) {
                     continue;
                 }
                 
@@ -559,7 +743,7 @@ io.on('connection', (socket) => {
                 console.log(`${playerId} tried to use ${item} but no valid targets found`);
                 console.log(`Player at (${playerX}, ${playerY}), adjacent tiles checked:`);
                 for (const pos of adjacentPositions) {
-                    if (pos.x >= 0 && pos.x < GRID_WIDTH && pos.y >= 0 && pos.y < GRID_HEIGHT) {
+                    if (pos.x >= 0 && pos.x < gameState.gridWidth && pos.y >= 0 && pos.y < gameState.gridHeight) {
                         console.log(`  (${pos.x}, ${pos.y}): tile type ${gameState.dungeonLayout[pos.y][pos.x]}`);
                     }
                 }
@@ -629,7 +813,7 @@ io.on('connection', (socket) => {
             const newY = player.y + deltaY;
             
             // Validate move (bounds check and collision detection)
-            if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
+            if (newX < 0 || newX >= gameState.gridWidth || newY < 0 || newY >= gameState.gridHeight) {
                 return; // Out of bounds
             }
             
