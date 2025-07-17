@@ -135,7 +135,18 @@
         
         socket.on('gameState', (newGameState) => {
             try {
-                console.log('Received game state:', newGameState);
+                const gameStateTimestamp = Date.now();
+                console.log(`📡 [${gameStateTimestamp}] Received game state from server:`, newGameState);
+                
+                // Debug: Log if this game state contains any player movements
+                if (serverGameState && newGameState.players) {
+                    for (const [playerId, newPlayer] of Object.entries(newGameState.players)) {
+                        const oldPlayer = serverGameState.players?.[playerId];
+                        if (oldPlayer && (oldPlayer.x !== newPlayer.x || oldPlayer.y !== newPlayer.y)) {
+                            console.log(`📡 [${gameStateTimestamp}] 🚶 ${playerId} moved from (${oldPlayer.x},${oldPlayer.y}) to (${newPlayer.x},${newPlayer.y}) - direction: ${newPlayer.lastMoveDirection}`);
+                        }
+                    }
+                }
                 
                 // Validate game state structure
                 if (!newGameState || typeof newGameState !== 'object') {
@@ -389,30 +400,30 @@
             
             // Soldier (Player 1) animations
             if (scene.textures.exists('soldier')) {
-                // Walking animation (second row - frames 4-7)
+                // OPTIMIZED: Use fewer walking frames for better positioning consistency
                 scene.anims.create({
                     key: 'soldier-walk',
-                    frames: scene.anims.generateFrameNumbers('soldier', { start: 4, end: 7 }),
-                    frameRate: 8,
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 9, end: 10 }),
+                    frameRate: 8, // Normal speed
                     repeat: -1
                 });
                 
-                console.log('✅ Soldier animations created');
+                console.log('✅ Soldier animations created (OPTIMIZED: walking frames 8-9)');
             } else {
                 console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
             }
             
             // Orc (Player 2) animations  
             if (scene.textures.exists('orc')) {
-                // Walking animation (second row - frames 4-7)
+                // TEST: Walking animation using just frame 0 (idle) to test movement issue
                 scene.anims.create({
                     key: 'orc-walk',
-                    frames: scene.anims.generateFrameNumbers('orc', { start: 4, end: 7 }),
+                    frames: scene.anims.generateFrameNumbers('orc', { start: 9, end: 10 }),
                     frameRate: 8,
                     repeat: -1
                 });
                 
-                console.log('✅ Orc animations created');
+                console.log('✅ Orc animations created (OPTIMIZED: walking frames 8-9)');
             } else {
                 console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
             }
@@ -709,24 +720,41 @@
                     // Set to idle frame (frame 0) - character will be still
                     sprite.setFrame(0);
                     
-                    // MANUAL OFFSET: Adjust sprite position to center character properly on tile
-                    // The character artwork appears to be positioned at bottom-right of sprite frame
-                    const offsetX = -16 * scale; // Move left to center horizontally (increased)
-                    const offsetY = -20 * scale; // Move up to center vertically (increased)
-                    sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
-                    
-                    console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
-                    
                     // Store animation references for state management
                     sprite.walkAnim = walkAnim;
                     sprite.isWalking = false;
                     
-                    // Store initial position to prevent walking animation on first render
-                    sprite.initialX = sprite.x;
-                    sprite.initialY = sprite.y;
+                    // Store initial tile coordinates to prevent walking animation on first render
+                    sprite.lastTileX = player.x;
+                    sprite.lastTileY = player.y;
                     
-                    // Ensure sprite starts with no tint
+                    // Ensure sprite starts with no tint and proper flip state
                     sprite.clearTint();
+                    
+                    // Initialize flip state based on starting direction (if any)
+                    if (player.lastMoveDirection === 'left') {
+                        sprite.setFlipX(true);
+                    } else {
+                        sprite.setFlipX(false); // Default to facing right
+                    }
+                    
+                    // MANUAL OFFSET: Adjust sprite position to center character properly on tile
+                    // The character artwork appears to be positioned at bottom-right of sprite frame
+                    const offsetY = -20 * scale; // Move up to center vertically
+                    
+                    // Adjust horizontal offset based on flip state
+                    let offsetX;
+                    if (sprite.flipX) {
+                        // When flipped (facing left), offset needs to be positive to center properly
+                        offsetX = 16 * scale; // Move right to center horizontally
+                    } else {
+                        // When not flipped (facing right), use negative offset as before
+                        offsetX = -16 * scale; // Move left to center horizontally
+                    }
+                    
+                    sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
+                    
+                    console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)}), flipX: ${sprite.flipX}`)
                     
                     console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
                 } else {
@@ -822,6 +850,13 @@
 
         function updateGameRendering() {
             if (!gameScene || !serverGameState) return;
+            const renderTimestamp = Date.now();
+            console.log(`🔄 [${renderTimestamp}] updateGameRendering called - players: ${Object.keys(serverGameState.players).join(', ')}`);
+            
+            // Log player positions for debugging
+            for (const [playerId, player] of Object.entries(serverGameState.players)) {
+                console.log(`🔄 [${renderTimestamp}] ${playerId} server position: (${player.x}, ${player.y}), lastMove: ${player.lastMoveDirection || 'none'}`);
+            }
             
             // Update tilemap tiles if using tilemap system, otherwise re-render grid
             // DISABLED: Let the tilemap keep its original visual style
@@ -865,24 +900,41 @@
                         // Set to idle frame (frame 0) - character will be still
                         sprite.setFrame(0);
                         
-                        // MANUAL OFFSET: Adjust sprite position to center character properly on tile
-                        // The character artwork appears to be positioned at bottom-right of sprite frame
-                        const offsetX = -16 * scale; // Move left to center horizontally (increased)
-                        const offsetY = -20 * scale; // Move up to center vertically (increased)
-                        sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
-                        
-                        console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
-                        
                         // Store animation references for state management
                         sprite.walkAnim = walkAnim;
                         sprite.isWalking = false;
                         
-                        // Store initial position to prevent walking animation on first render
-                        sprite.initialX = sprite.x;
-                        sprite.initialY = sprite.y;
+                        // Store initial tile coordinates to prevent walking animation on first render
+                        sprite.lastTileX = player.x;
+                        sprite.lastTileY = player.y;
                         
-                        // Ensure sprite starts with no tint
+                        // Ensure sprite starts with no tint and proper flip state
                         sprite.clearTint();
+                        
+                        // Initialize flip state based on starting direction (if any)
+                        if (player.lastMoveDirection === 'left') {
+                            sprite.setFlipX(true);
+                        } else {
+                            sprite.setFlipX(false); // Default to facing right
+                        }
+                        
+                        // MANUAL OFFSET: Adjust sprite position to center character properly on tile
+                        // The character artwork appears to be positioned at bottom-right of sprite frame
+                        const offsetY = -20 * scale; // Move up to center vertically
+                        
+                        // Adjust horizontal offset based on flip state
+                        let offsetX;
+                        if (sprite.flipX) {
+                            // When flipped (facing left), offset needs to be positive to center properly
+                            offsetX = 16 * scale; // Move right to center horizontally
+                        } else {
+                            // When not flipped (facing right), use negative offset as before
+                            offsetX = -16 * scale; // Move left to center horizontally
+                        }
+                        
+                        sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
+                        
+                        console.log(`✅ Positioned ${playerId} sprite with offset (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)}), flipX: ${sprite.flipX}`)
                         
                         console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey} (idle frame 0)`);
                     } else {
@@ -939,43 +991,97 @@
                     const coords = getTilePixelPosition(player.x, player.y);
                     
                     // Check if player position changed to trigger walking animation
-                    // Use stored initial position for first render, then track actual changes
-                    const oldX = sprite.initialX !== undefined ? sprite.initialX : sprite.x;
-                    const oldY = sprite.initialY !== undefined ? sprite.initialY : sprite.y;
-                    const targetX = coords.x + (-16 * ((coords.tileSize * 2.0) / 64));
-                    const targetY = coords.y + (-20 * ((coords.tileSize * 2.0) / 64));
-                    const positionChanged = (Math.abs(oldX - targetX) > 1 || Math.abs(oldY - targetY) > 1);
+                    // Compare previous tile coordinates to current tile coordinates
+                    const oldTileX = sprite.lastTileX !== undefined ? sprite.lastTileX : player.x;
+                    const oldTileY = sprite.lastTileY !== undefined ? sprite.lastTileY : player.y;
+                    const positionChanged = (oldTileX !== player.x || oldTileY !== player.y);
                     
-                    // Apply offset to sprite only, keep label above tile center
-                    const offsetX = -16 * ((coords.tileSize * 2.0) / 64); // Same offset calculation (updated scale)
-                    const offsetY = -20 * ((coords.tileSize * 2.0) / 64); // Same offset calculation (updated scale)
-                    const spriteX = coords.x + offsetX;
-                    const spriteY = coords.y + offsetY;
+                    // Update stored tile coordinates for next comparison
+                    sprite.lastTileX = player.x;
+                    sprite.lastTileY = player.y;
                     
-                    sprite.setPosition(spriteX, spriteY);
-                    label.setPosition(coords.x, coords.y - 40); // Label stays above tile center
-                    
-                    // Update stored position for next comparison
-                    sprite.initialX = sprite.x;
-                    sprite.initialY = sprite.y;
-                    
-                    // Handle animation states for animated sprites
+                    // Handle animation states and direction flipping for animated sprites
                     if (sprite.walkAnim) {
+                        const timestamp = Date.now();
+                        console.log(`🎬 [${timestamp}] ${playerId} animation check: posChanged=${positionChanged}, isWalking=${sprite.isWalking}, oldTile=(${oldTileX},${oldTileY}), newTile=(${player.x},${player.y})`);
+                        console.log(`🎬 [${timestamp}] ${playerId} current animation state: playing=${sprite.anims.isPlaying}, currentAnim=${sprite.anims.currentAnim?.key || 'none'}, frame=${sprite.frame.name}`);
+                        
                         if (positionChanged && !sprite.isWalking) {
+                            console.log(`🎬 [${timestamp}] 🟢 STARTING animation for ${playerId} - setting isWalking=true`);
+                            
+                            // Minimal frame tracking for fine-tuning
+                            sprite.on('animationupdate', (animation, frame) => {
+                                console.log(`🎭 ${playerId} frame: ${frame.index}`);
+                            });
+                            
                             // Start walking animation
                             sprite.play(sprite.walkAnim);
                             sprite.isWalking = true;
                             
+                            // Store timeout ID to prevent multiple timeouts
+                            if (sprite.animationTimeout) {
+                                console.log(`🎬 [${timestamp}] ⚠️ Clearing existing timeout for ${playerId}`);
+                                clearTimeout(sprite.animationTimeout);
+                            }
+                            
                             // Return to idle frame (frame 0) after movement animation completes
-                            setTimeout(() => {
+                            sprite.animationTimeout = setTimeout(() => {
                                 if (sprite && sprite.active) {
+                                    const endTimestamp = Date.now();
+                                    console.log(`🎬 [${endTimestamp}] 🔴 STOPPING animation for ${playerId} after ${endTimestamp - timestamp}ms - setting isWalking=false`);
                                     sprite.stop(); // Stop the walking animation
                                     sprite.setFrame(0); // Set to idle frame (still character)
                                     sprite.isWalking = false;
+                                    sprite.animationTimeout = null;
                                 }
                             }, 500); // 500ms walking animation duration
+                        } else if (positionChanged && sprite.isWalking) {
+                            console.log(`🎬 [${timestamp}] ⚠️ ${playerId} position changed while already animating - IGNORING (preventing double animation)`);
+                        } else if (!positionChanged) {
+                            console.log(`🎬 [${timestamp}] ${playerId} no position change detected - no animation needed`);
+                        }
+                        
+                        // Handle sprite flipping based on movement direction
+                        if (player.lastMoveDirection) {
+                            console.log(`🔄 ${playerId} handling flip: ${player.lastMoveDirection}`);
+                            switch (player.lastMoveDirection) {
+                                case 'left':
+                                    // Flip sprite to face left
+                                    sprite.setFlipX(true);
+                                    break;
+                                case 'right':
+                                    // Face normal direction (right)
+                                    sprite.setFlipX(false);
+                                    break;
+                                case 'up':
+                                case 'down':
+                                    // Keep current flip state for up/down movement
+                                    // Don't change flip - character maintains last left/right direction
+                                    break;
+                            }
                         }
                     }
+                    
+                    // Calculate sprite positioning with proper offset handling for flipped sprites
+                    const scale = (coords.tileSize * 2.0) / 64;
+                    const baseOffsetY = -20 * scale; // Base vertical offset (same for both directions)
+                    
+                    // Adjust horizontal offset based on flip state
+                    let baseOffsetX;
+                    if (sprite.flipX) {
+                        // When flipped (facing left), offset needs to be positive to center properly
+                        baseOffsetX = 16 * scale; // Move right to center horizontally
+                    } else {
+                        // When not flipped (facing right), use negative offset as before
+                        baseOffsetX = -16 * scale; // Move left to center horizontally
+                    }
+                    
+                    // Apply final position with corrected offset
+                    const spriteX = coords.x + baseOffsetX;
+                    const spriteY = coords.y + baseOffsetY;
+                    
+                    sprite.setPosition(spriteX, spriteY);
+                    label.setPosition(coords.x, coords.y - 40); // Label stays above tile center
                     
                     // Highlight current player's turn - only highlight the text label
                     if (serverGameState.gameStarted && serverGameState.currentPlayerTurn === playerId) {
@@ -1022,23 +1128,7 @@
             scene.input.keyboard.on('keydown-SPACE', () => sendUseItemRequest());
         }
 
-        // Helper function to trigger walking animation for a player
-        function triggerWalkingAnimation(playerId) {
-            const sprite = playerSprites[playerId];
-            if (sprite && sprite.walkAnim && !sprite.isWalking) {
-                sprite.play(sprite.walkAnim);
-                sprite.isWalking = true;
-                
-                // Return to idle frame (frame 0) after a short duration
-                setTimeout(() => {
-                    if (sprite && sprite.active) {
-                        sprite.stop(); // Stop the walking animation
-                        sprite.setFrame(0); // Set to idle frame (still character)
-                        sprite.isWalking = false;
-                    }
-                }, 400); // 400ms walking animation
-            }
-        }
+
 
         // Function to send move requests to server
         function sendMoveRequest(direction) {
@@ -1058,8 +1148,8 @@
                     return;
                 }
                 
-                // Trigger walking animation immediately for responsive feedback
-                triggerWalkingAnimation(myPlayerId);
+                // Don't trigger animation immediately - wait for server confirmation
+                // This prevents double animation triggering
                 
                 console.log('Sending move request:', direction);
                 socket.emit('moveRequest', { direction: direction });
