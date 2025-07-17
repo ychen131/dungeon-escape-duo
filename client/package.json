@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:watch": "concurrently \"tsc --watch\" \"vite build --watch\" --names \"tsc,vite\" --prefix-colors \"blue,green\"",
+    "tsc:watch": "tsc --watch",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "concurrently": "^9.2.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   },

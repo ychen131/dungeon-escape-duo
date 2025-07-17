@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node server.js",
     "build:client": "cd client && npm run build",
+    "build:client:watch": "cd client && npm run build:watch",
     "dev:client": "cd client && npm run dev",
     "dev:server": "nodemon server.js",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:build": "concurrently \"npm run dev:server\" \"npm run build:client:watch\"",
+    "watch": "concurrently \"npm run dev:server\" \"npm run build:client:watch\" --names \"server,client-build\" --prefix-colors \"yellow,cyan\"",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
