@@ -317,7 +317,7 @@ const gameState = {
   },
   fires: [
     { x: 2, y: 2, isDoused: false }, // Fire guarding the key (moved to floor)
-    { x: 5, y: 4, isDoused: false }, // Fire blocking the central path
+    { x: 6, y: 5, isDoused: false }, // Fire blocking the central path
   ],
   door: {
     x: 8,
