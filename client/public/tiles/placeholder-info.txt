@@ -1,0 +1,15 @@
+PLACEHOLDER TILES INFO
+=====================
+
+The game will work with either:
+
+1. REAL TILESET: Download from https://cardinalzebra.itch.io/dungeon-tiles-1
+   - Extract the ZIP and copy 5 PNG files (rename to: floor.png, wall.png, fire.png, water.png, exit.png)
+
+2. FALLBACK MODE: No sprites needed!
+   - If PNG files are missing, the game automatically shows colored rectangles
+   - This lets you test the game structure without downloading anything
+
+The server is now running at: http://localhost:3000
+
+Current status: FALLBACK MODE (colored rectangles) - game is fully functional! 

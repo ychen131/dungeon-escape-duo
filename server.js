@@ -3,13 +3,27 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
 
-// Serve static files from the public directory
-app.use(express.static(path.join(__dirname, 'public')));
+// Configure CORS for development
+const corsOptions = {
+  origin: ['http://localhost:5173', 'http://localhost:3000'], // Allow Vite dev server and production
+  methods: ['GET', 'POST'],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+
+// Configure Socket.io with CORS
+const io = socketIo(server, {
+  cors: corsOptions,
+});
+
+// Serve static files from the client build directory
+app.use(express.static(path.join(__dirname, 'client/dist')));
 
 // Tilemap tile ID to game logic mapping (matches client-side mapping)
 // Based on careful analysis of the Cardinal Zebra tileset and layer data
