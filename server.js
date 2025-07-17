@@ -545,6 +545,47 @@ function broadcastCustomizedGameState() {
   }
 }
 
+// Helper function to check adjacency between two positions
+function isAdjacent(pos1, pos2) {
+  const dx = Math.abs(pos1.x - pos2.x);
+  const dy = Math.abs(pos1.y - pos2.y);
+  return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
+}
+
+// Helper function to check door win condition (both players at unlocked door)
+function checkDoorWinCondition() {
+  if (!gameState.door || !gameState.door.isUnlocked) {
+    return false;
+  }
+
+  const players = Object.values(gameState.players);
+  if (players.length < 2) {
+    return false;
+  }
+
+  // Check if both players are at the door tile
+  const bothAtDoor = players.every(player => 
+    player.x === gameState.door.x && player.y === gameState.door.y
+  );
+
+  if (bothAtDoor) {
+    console.log('🎉 Both players reached the door! Level completed!');
+    gameState.gameWon = true;
+    gameState.victoryTime = new Date().toISOString();
+    
+    // Advance to next level after a brief delay
+    setTimeout(() => {
+      advanceToNextLevel();
+    }, 2000);
+    
+    // Broadcast victory state
+    broadcastCustomizedGameState();
+    return true;
+  }
+
+  return false;
+}
+
 // Helper function to assign random items to players
 function assignRandomItems() {
   // For Level 1 cooperative puzzle, both players get "Douse Fire" items
@@ -783,6 +824,28 @@ io.on('connection', socket => {
           return;
         }
 
+        // === SPECIAL CASE: DOOR ESCAPE ===
+        // Check if player is trying to escape through the door
+        if (gameState.door && gameState.key && 
+            gameState.key.heldBy === playerId && 
+            gameState.door.isUnlocked && 
+            isAdjacent(player, gameState.door)) {
+          
+          console.log(`Player ${playerId} is escaping through the door!`);
+          
+          // Send escape message to player
+          const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
+          if (socket) {
+            socket.emit('doorMessage', { 
+              message: '🎉 You escaped! Checking if your partner is ready...' 
+            });
+          }
+          
+          // Check if both players are at the door for level completion
+          checkDoorWinCondition();
+          return; // Don't process as regular item use
+        }
+
         // Find adjacent hazard tiles that this item can affect
         const playerX = player.x;
         const playerY = player.y;
@@ -974,6 +1037,29 @@ io.on('connection', socket => {
         if (gameState.key && !gameState.key.heldBy && player.x === gameState.key.x && player.y === gameState.key.y) {
           gameState.key.heldBy = playerId;
           console.log(`Player ${playerId} picked up the key!`);
+        }
+
+        // === DOOR INTERACTION LOGIC ===
+        if (gameState.door) {
+          const isAdjacentToDoor = isAdjacent(player, gameState.door);
+          
+          if (isAdjacentToDoor && gameState.key) {
+            if (gameState.key.heldBy === playerId && !gameState.door.isUnlocked) {
+              // Player has key and is adjacent to door - auto-unlock
+              gameState.door.isUnlocked = true;
+              console.log(`Player ${playerId} unlocked the door!`);
+            } else if (!gameState.key.heldBy && !gameState.door.isUnlocked) {
+              // Player is near door but no one has the key yet
+              console.log(`Player ${playerId} approached the door but needs the key first`);
+              // Send reminder message to this specific player
+              const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
+              if (socket) {
+                socket.emit('doorMessage', { 
+                  message: '🔒 You need the key to unlock this door! Find it first.' 
+                });
+              }
+            }
+          }
         }
 
         console.log(`${playerId} moved to (${newX}, ${newY}) facing ${direction}`);

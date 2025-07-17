@@ -290,6 +290,16 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('gameState', (newGameState: GameState) => {
             this.handleGameState(newGameState);
         });
+
+        this.socket.on('doorMessage', (data: { message: string }) => {
+            console.log('Door message:', data.message);
+            this.updateStatus(data.message, '#f39c12', '16px', 'normal');
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
+        });
     }
 
     private handleGameState(newGameState: GameState) {
@@ -628,7 +638,7 @@ export class GameScene extends Phaser.Scene {
         };
 
         // Clear old puzzle object sprites
-        const puzzleObjectKeys = ['key', 'fire_0', 'fire_1', 'door'];
+        const puzzleObjectKeys = ['key', 'fire_0', 'fire_1', 'door', 'door_label'];
         puzzleObjectKeys.forEach(key => {
             if (this.playerSprites[key]) {
                 (this.playerSprites[key] as any).destroy();
@@ -670,6 +680,42 @@ export class GameScene extends Phaser.Scene {
                     }
                 }
             });
+        }
+
+        // Draw the door
+        if (this.serverGameState.door) {
+            const coords = getTilePixelPosition(this.serverGameState.door.x, this.serverGameState.door.y);
+            
+            // Determine door appearance based on state
+            let doorColor = 0x8b4513; // Default brown (locked)
+            let doorIcon = '🔒';
+            let strokeColor = 0x000000; // Default black stroke
+            
+            if (this.serverGameState.door.isUnlocked) {
+                doorColor = 0x2ecc71; // Green (unlocked)
+                doorIcon = '🚪';
+            } else if (this.serverGameState.key && this.serverGameState.key.heldBy) {
+                doorColor = 0xf39c12; // Orange (highlighted - someone has key)
+                doorIcon = '🔑';
+                strokeColor = 0xffd700; // Golden stroke for highlight
+            }
+            
+            const doorRect = this.add.rectangle(coords.x, coords.y, 40, 40, doorColor);
+            doorRect.setStrokeStyle(4, strokeColor);
+            doorRect.setDepth(90); // Below players but above tiles
+            this.playerSprites['door'] = doorRect;
+            
+            // Add door label
+            const doorLabel = this.add.text(coords.x, coords.y, doorIcon, {
+                fontSize: '20px',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            doorLabel.setDepth(91);
+            this.playerSprites['door_label'] = doorLabel;
+            
+            const doorState = this.serverGameState.door.isUnlocked ? 'unlocked' : 
+                             (this.serverGameState.key?.heldBy ? 'highlighted' : 'locked');
+            console.log(`🚪 Rendered door (${doorState})`);
         }
     }
 
