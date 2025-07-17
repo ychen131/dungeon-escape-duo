@@ -309,6 +309,21 @@ const gameState = {
   currentLevel: currentLevel, // Current difficulty level
   mapIndex: currentMapIndex, // Current map within the level
   levelProgression: 1, // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
+  // Level 1 cooperative puzzle objects
+  key: {
+    x: 1,
+    y: 2, // Moved down one tile to floor
+    heldBy: null, // Track which player ID has the key
+  },
+  fires: [
+    { x: 2, y: 2, isDoused: false }, // Fire guarding the key (moved to floor)
+    { x: 5, y: 4, isDoused: false }, // Fire blocking the central path
+  ],
+  door: {
+    x: 8,
+    y: 2,
+    isUnlocked: false,
+  },
 };
 
 // Player starting positions (will be updated based on map size)
