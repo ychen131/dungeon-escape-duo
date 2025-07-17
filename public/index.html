@@ -400,15 +400,15 @@
             
             // Soldier (Player 1) animations
             if (scene.textures.exists('soldier')) {
-                // TEST: Walking animation using just frame 0 (idle) to test movement issue
+                // OPTIMIZED: Use fewer walking frames for better positioning consistency
                 scene.anims.create({
                     key: 'soldier-walk',
-                    frames: scene.anims.generateFrameNumbers('soldier', { start: 0, end: 0 }),
-                    frameRate: 8,
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 9, end: 10 }),
+                    frameRate: 8, // Normal speed
                     repeat: -1
                 });
                 
-                console.log('✅ Soldier animations created (TEST: using frame 0 only)');
+                console.log('✅ Soldier animations created (OPTIMIZED: walking frames 8-9)');
             } else {
                 console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
             }
@@ -418,12 +418,12 @@
                 // TEST: Walking animation using just frame 0 (idle) to test movement issue
                 scene.anims.create({
                     key: 'orc-walk',
-                    frames: scene.anims.generateFrameNumbers('orc', { start: 0, end: 0 }),
+                    frames: scene.anims.generateFrameNumbers('orc', { start: 9, end: 10 }),
                     frameRate: 8,
                     repeat: -1
                 });
                 
-                console.log('✅ Orc animations created (TEST: using frame 0 only)');
+                console.log('✅ Orc animations created (OPTIMIZED: walking frames 8-9)');
             } else {
                 console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
             }
@@ -1008,6 +1008,12 @@
                         
                         if (positionChanged && !sprite.isWalking) {
                             console.log(`🎬 [${timestamp}] 🟢 STARTING animation for ${playerId} - setting isWalking=true`);
+                            
+                            // Minimal frame tracking for fine-tuning
+                            sprite.on('animationupdate', (animation, frame) => {
+                                console.log(`🎭 ${playerId} frame: ${frame.index}`);
+                            });
+                            
                             // Start walking animation
                             sprite.play(sprite.walkAnim);
                             sprite.isWalking = true;
