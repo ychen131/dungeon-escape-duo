@@ -313,12 +313,20 @@ const gameState = {
 
 // Player starting positions (will be updated based on map size)
 let startingPositions = {
-  player1: { x: 1, y: 1 },
+  player1: { x: 1, y: 8 }, // Player 1 new spawn: bottom-left
   player2: { x: 10, y: 6 },
 };
 
 // Function to find safe starting positions in the map
 function findSafeStartingPositions(dungeonLayout) {
+  // For Level 1 cooperative puzzle, use specific spawn positions
+  if (currentLevel === 'level1') {
+    return {
+      player1: { x: 1, y: 6 }, // Player 1 (Soldier): bottom-left (valid floor tile)
+      player2: { x: 10, y: 2 }, // Player 2 (Orc): top-right
+    };
+  }
+
   const safePositions = [];
 
   // Find all floor tiles
