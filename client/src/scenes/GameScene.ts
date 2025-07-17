@@ -123,15 +123,27 @@ export class GameScene extends Phaser.Scene {
                 return false;
             }
             
+            // Calculate centering offset for the tilemap
+            const tileSize = 50; // Our desired tile size after scaling
+            const mapWidthPixels = map.width * tileSize;  // 12 * 50 = 600
+            const mapHeightPixels = map.height * tileSize; // 9 * 50 = 450
+            const canvasWidth = 800;
+            const canvasHeight = 600;
+            
+            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // (800 - 600) / 2 = 100
+            const offsetY = (canvasHeight - mapHeightPixels) / 2; // (600 - 450) / 2 = 75
+            
+            console.log(`🎯 Centering tilemap: offset (${offsetX}, ${offsetY}), map size ${mapWidthPixels}x${mapHeightPixels}`);
+
             // Create tile layers (render all layers from the tilemap)
             map.layers.forEach((layerData, index) => {
                 console.log(`🎨 Creating layer ${index}: ${layerData.name}`);
-                const layer = map.createLayer(layerData.name, tileset, 0, 0);
+                const layer = map.createLayer(layerData.name, tileset, offsetX, offsetY);
                 if (layer) {
                     // Scale the layer to make tiles bigger (32x32 -> 50x50)
-                    const scale = 50 / 32; // Scale factor from tileset to desired tile size
+                    const scale = tileSize / 32; // Scale factor from tileset to desired tile size
                     layer.setScale(scale);
-                    console.log(`✅ Layer '${layerData.name}' created successfully`);
+                    console.log(`✅ Layer '${layerData.name}' created successfully at offset (${offsetX}, ${offsetY})`);
                 } else {
                     console.warn(`⚠️  Failed to create layer: ${layerData.name}`);
                 }
@@ -346,12 +358,20 @@ export class GameScene extends Phaser.Scene {
     private updatePlayerSprites() {
         if (!this.serverGameState) return;
 
-        // Get tile size and calculate positions
+        // Get tile size and calculate positions (matching centered tilemap offset)
         const getTilePixelPosition = (tileX: number, tileY: number) => {
             const tileSize = 50;
+            const canvasWidth = 800;
+            const canvasHeight = 600;
+            const mapWidthPixels = 12 * tileSize;  // 12 tiles wide
+            const mapHeightPixels = 9 * tileSize;  // 9 tiles tall
+            
+            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // Same as tilemap offset
+            const offsetY = (canvasHeight - mapHeightPixels) / 2; // Same as tilemap offset
+            
             return {
-                x: tileX * tileSize + tileSize / 2,
-                y: tileY * tileSize + tileSize / 2,
+                x: offsetX + (tileX * tileSize) + (tileSize / 2),
+                y: offsetY + (tileY * tileSize) + (tileSize / 2),
                 tileSize
             };
         };

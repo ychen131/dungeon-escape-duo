@@ -10,16 +10,16 @@ const server = http.createServer(app);
 
 // Configure CORS for development
 const corsOptions = {
-  origin: ["http://localhost:5173", "http://localhost:3000"], // Allow Vite dev server and production
-  methods: ["GET", "POST"],
-  credentials: true
+  origin: ['http://localhost:5173', 'http://localhost:3000'], // Allow Vite dev server and production
+  methods: ['GET', 'POST'],
+  credentials: true,
 };
 
 app.use(cors(corsOptions));
 
 // Configure Socket.io with CORS
 const io = socketIo(server, {
-  cors: corsOptions
+  cors: corsOptions,
 });
 
 // Serve static files from the client build directory
