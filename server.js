@@ -547,11 +547,16 @@ function broadcastCustomizedGameState() {
 
 // Helper function to assign random items to players
 function assignRandomItems() {
-  const itemTypes = Object.values(ITEM_TYPES);
-
-  // Assign random items to each player
-  gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-  gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  // For Level 1 cooperative puzzle, both players get "Douse Fire" items
+  if (currentLevel === 'level1') {
+    gameState.playerItems.player1 = ITEM_TYPES.DOUSE_FIRE;
+    gameState.playerItems.player2 = ITEM_TYPES.DOUSE_FIRE;
+  } else {
+    // For other levels, assign random items
+    const itemTypes = Object.values(ITEM_TYPES);
+    gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  }
 
   console.log(
     `Items assigned - Player1: ${gameState.playerItems.player1}, Player2: ${gameState.playerItems.player2}`
@@ -804,11 +809,21 @@ io.on('connection', socket => {
           const tileType = gameState.dungeonLayout[pos.y][pos.x];
 
           // Check if item can be used on this tile
-          if (item === ITEM_TYPES.DOUSE_FIRE && tileType === TILE_TYPES.FIRE_HAZARD) {
-            // Remove fire hazard
-            gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
-            console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
-            itemUsed = true;
+          if (item === ITEM_TYPES.DOUSE_FIRE) {
+            // For Level 1 cooperative puzzle, check fires array
+            if (currentLevel === 'level1' && Array.isArray(gameState.fires)) {
+              const fireAtPos = gameState.fires.find(f => f.x === pos.x && f.y === pos.y && !f.isDoused);
+              if (fireAtPos) {
+                fireAtPos.isDoused = true;
+                console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
+                itemUsed = true;
+              }
+            } else if (tileType === TILE_TYPES.FIRE_HAZARD) {
+              // Fallback for other levels - use dungeon layout
+              gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+              console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
+              itemUsed = true;
+            }
           } else if (item === ITEM_TYPES.BUILD_BRIDGE && tileType === TILE_TYPES.CHASM) {
             // Fill chasm with bridge
             gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
@@ -939,12 +954,27 @@ io.on('connection', socket => {
           return; // Cannot move onto hazards directly
         }
 
+        // Prevent movement onto undoused fire tiles (from fires array)
+        if (Array.isArray(gameState.fires)) {
+          const fireAtTarget = gameState.fires.find(f => f.x === newX && f.y === newY && !f.isDoused);
+          if (fireAtTarget) {
+            console.log(`Move blocked: ${playerId} tried to move onto undoused fire at (${newX}, ${newY})`);
+            return; // Cannot move onto undoused fire
+          }
+        }
+
         // Exit tiles are walkable (no blocking needed)
 
         // Valid move - update player position and direction in game state
         player.x = newX;
         player.y = newY;
         player.lastMoveDirection = direction; // Store direction for sprite flipping
+
+        // === KEY PICKUP LOGIC ===
+        if (gameState.key && !gameState.key.heldBy && player.x === gameState.key.x && player.y === gameState.key.y) {
+          gameState.key.heldBy = playerId;
+          console.log(`Player ${playerId} picked up the key!`);
+        }
 
         console.log(`${playerId} moved to (${newX}, ${newY}) facing ${direction}`);
 
