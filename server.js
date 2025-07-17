@@ -320,7 +320,7 @@ const gameState = {
     { x: 6, y: 5, isDoused: false }, // Fire blocking the central path
   ],
   door: {
-    x: 8,
+    x: 9,
     y: 2,
     isUnlocked: false,
   },
