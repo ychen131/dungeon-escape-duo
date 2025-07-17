@@ -1064,8 +1064,15 @@ io.on('connection', socket => {
 
         console.log(`${playerId} moved to (${newX}, ${newY}) facing ${direction}`);
 
-        // Check for win condition after the move
-        const gameWon = checkWinCondition();
+        // Check for win condition after the move - use appropriate win condition for level
+        let gameWon = false;
+        if (currentLevel === 'level1') {
+          // Level 1 uses door-based win condition
+          gameWon = checkDoorWinCondition();
+        } else {
+          // Other levels use exit tile win condition
+          gameWon = checkWinCondition();
+        }
 
         if (!gameWon) {
           // Only switch turns if game hasn't been won
