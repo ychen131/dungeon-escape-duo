@@ -355,12 +355,12 @@
             // Load player character sprite sheets
             console.log('🏃 Loading character sprite sheets...');
             this.load.spritesheet('soldier', 'assets/soldier.png', { 
-                frameWidth: 64, 
-                frameHeight: 64 
+                frameWidth: 100, 
+                frameHeight: 100 
             });
             this.load.spritesheet('orc', 'assets/orc.png', { 
-                frameWidth: 64, 
-                frameHeight: 64 
+                frameWidth: 100, 
+                frameHeight: 100 
             });
             
             // Keep loading individual tiles as backup for fallback mode
@@ -400,22 +400,38 @@
             
             // Soldier (Player 1) animations
             if (scene.textures.exists('soldier')) {
-                // OPTIMIZED: Use fewer walking frames for better positioning consistency
+                // Idle animation - breathing/standing animation
+                scene.anims.create({
+                    key: 'soldier-idle',
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 0, end: 5 }),
+                    frameRate: 6, // Slower speed for idle breathing
+                    repeat: -1
+                });
+                
+                // Walking animation
                 scene.anims.create({
                     key: 'soldier-walk',
-                    frames: scene.anims.generateFrameNumbers('soldier', { start: 9, end: 10 }),
+                    frames: scene.anims.generateFrameNumbers('soldier', { start: 9, end: 18 }),
                     frameRate: 8, // Normal speed
                     repeat: -1
                 });
                 
-                console.log('✅ Soldier animations created (OPTIMIZED: walking frames 8-9)');
+                console.log('✅ Soldier animations created (idle: frames 0-5, walk: frames 9-18)');
             } else {
                 console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
             }
             
             // Orc (Player 2) animations  
             if (scene.textures.exists('orc')) {
-                // TEST: Walking animation using just frame 0 (idle) to test movement issue
+                // Idle animation - breathing/standing animation
+                scene.anims.create({
+                    key: 'orc-idle',
+                    frames: scene.anims.generateFrameNumbers('orc', { start: 0, end: 5 }),
+                    frameRate: 6, // Slower speed for idle breathing
+                    repeat: -1
+                });
+                
+                // Walking animation
                 scene.anims.create({
                     key: 'orc-walk',
                     frames: scene.anims.generateFrameNumbers('orc', { start: 9, end: 10 }),
@@ -423,7 +439,7 @@
                     repeat: -1
                 });
                 
-                console.log('✅ Orc animations created (OPTIMIZED: walking frames 8-9)');
+                console.log('✅ Orc animations created (idle: frames 0-5, walk: frames 9-10)');
             } else {
                 console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
             }
@@ -694,13 +710,15 @@
                 const coords = getTilePixelPosition(player.x, player.y);
                 
                 // Determine sprite key and animations based on player
-                let spriteKey, walkAnim;
+                let spriteKey, walkAnim, idleAnim;
                 if (playerId === 'player1') {
                     spriteKey = 'soldier';
                     walkAnim = 'soldier-walk';
+                    idleAnim = 'soldier-idle';
                 } else {
                     spriteKey = 'orc';
                     walkAnim = 'orc-walk';
+                    idleAnim = 'orc-idle';
                 }
                 
                 // Try to create animated sprite, fallback to rectangle if sprite not available
@@ -712,17 +730,18 @@
                     // Set origin to center
                     sprite.setOrigin(0.5, 0.5);
                     
-                    // Scale the sprite to fit the tile size (64x64 sprite -> tile size)
-                    const scale = (coords.tileSize * 2.0) / 64; // Use 200% of tile size for better visibility
+                    // Scale the sprite to fit the tile size (100x100 sprite -> tile size)
+                    const scale = (coords.tileSize * 4.0) / 100; // Use 400% of tile size for better visibility
                     sprite.setScale(scale);
                     sprite.setDepth(100);
                     
-                    // Set to idle frame (frame 0) - character will be still
-                    sprite.setFrame(0);
-                    
                     // Store animation references for state management
                     sprite.walkAnim = walkAnim;
+                    sprite.idleAnim = idleAnim;
                     sprite.isWalking = false;
+                    
+                    // Start with idle animation playing
+                    sprite.play(idleAnim);
                     
                     // Store initial tile coordinates to prevent walking animation on first render
                     sprite.lastTileX = player.x;
@@ -740,16 +759,16 @@
                     
                     // MANUAL OFFSET: Adjust sprite position to center character properly on tile
                     // The character artwork appears to be positioned at bottom-right of sprite frame
-                    const offsetY = -20 * scale; // Move up to center vertically
+                    const offsetY = -10 * scale; // Move up to center vertically
                     
                     // Adjust horizontal offset based on flip state
                     let offsetX;
                     if (sprite.flipX) {
                         // When flipped (facing left), offset needs to be positive to center properly
-                        offsetX = 16 * scale; // Move right to center horizontally
+                        offsetX = 8 * scale; // Move right to center horizontally
                     } else {
                         // When not flipped (facing right), use negative offset as before
-                        offsetX = -16 * scale; // Move left to center horizontally
+                        offsetX = -8 * scale; // Move left to center horizontally
                     }
                     
                     sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
@@ -874,13 +893,15 @@
                     const coords = getTilePixelPosition(player.x, player.y);
                     
                     // Determine sprite key and animations based on player
-                    let spriteKey, walkAnim;
+                    let spriteKey, walkAnim, idleAnim;
                     if (playerId === 'player1') {
                         spriteKey = 'soldier';
                         walkAnim = 'soldier-walk';
+                        idleAnim = 'soldier-idle';
                     } else {
                         spriteKey = 'orc';
                         walkAnim = 'orc-walk';
+                        idleAnim = 'orc-idle';
                     }
                     
                     // Try to create animated sprite, fallback to rectangle if sprite not available
@@ -892,17 +913,18 @@
                         // Set origin to center
                         sprite.setOrigin(0.5, 0.5);
                         
-                        // Scale the sprite to fit the tile size (64x64 sprite -> tile size)
-                        const scale = (coords.tileSize * 2.0) / 64; // Use 200% of tile size for better visibility
+                        // Scale the sprite to fit the tile size (100x100 sprite -> tile size)
+                        const scale = (coords.tileSize * 4.0) / 100; // Use 400% of tile size for better visibility
                         sprite.setScale(scale);
                         sprite.setDepth(100);
                         
-                        // Set to idle frame (frame 0) - character will be still
-                        sprite.setFrame(0);
-                        
                         // Store animation references for state management
                         sprite.walkAnim = walkAnim;
+                        sprite.idleAnim = idleAnim;
                         sprite.isWalking = false;
+                        
+                        // Start with idle animation playing
+                        sprite.play(idleAnim);
                         
                         // Store initial tile coordinates to prevent walking animation on first render
                         sprite.lastTileX = player.x;
@@ -920,16 +942,16 @@
                         
                         // MANUAL OFFSET: Adjust sprite position to center character properly on tile
                         // The character artwork appears to be positioned at bottom-right of sprite frame
-                        const offsetY = -20 * scale; // Move up to center vertically
+                        const offsetY = -10 * scale; // Move up to center vertically
                         
                         // Adjust horizontal offset based on flip state
                         let offsetX;
                         if (sprite.flipX) {
                             // When flipped (facing left), offset needs to be positive to center properly
-                            offsetX = 16 * scale; // Move right to center horizontally
+                            offsetX = 8 * scale; // Move right to center horizontally
                         } else {
                             // When not flipped (facing right), use negative offset as before
-                            offsetX = -16 * scale; // Move left to center horizontally
+                            offsetX = -8 * scale; // Move left to center horizontally
                         }
                         
                         sprite.setPosition(coords.x + offsetX, coords.y + offsetY);
@@ -1024,13 +1046,12 @@
                                 clearTimeout(sprite.animationTimeout);
                             }
                             
-                            // Return to idle frame (frame 0) after movement animation completes
+                            // Return to idle animation after movement animation completes
                             sprite.animationTimeout = setTimeout(() => {
                                 if (sprite && sprite.active) {
                                     const endTimestamp = Date.now();
-                                    console.log(`🎬 [${endTimestamp}] 🔴 STOPPING animation for ${playerId} after ${endTimestamp - timestamp}ms - setting isWalking=false`);
-                                    sprite.stop(); // Stop the walking animation
-                                    sprite.setFrame(0); // Set to idle frame (still character)
+                                    console.log(`🎬 [${endTimestamp}] 🔴 STOPPING walk animation for ${playerId} after ${endTimestamp - timestamp}ms - returning to idle`);
+                                    sprite.play(sprite.idleAnim); // Play idle animation
                                     sprite.isWalking = false;
                                     sprite.animationTimeout = null;
                                 }
@@ -1061,26 +1082,8 @@
                             }
                         }
                     }
-                    
-                    // Calculate sprite positioning with proper offset handling for flipped sprites
-                    const scale = (coords.tileSize * 2.0) / 64;
-                    const baseOffsetY = -20 * scale; // Base vertical offset (same for both directions)
-                    
-                    // Adjust horizontal offset based on flip state
-                    let baseOffsetX;
-                    if (sprite.flipX) {
-                        // When flipped (facing left), offset needs to be positive to center properly
-                        baseOffsetX = 16 * scale; // Move right to center horizontally
-                    } else {
-                        // When not flipped (facing right), use negative offset as before
-                        baseOffsetX = -16 * scale; // Move left to center horizontally
-                    }
-                    
-                    // Apply final position with corrected offset
-                    const spriteX = coords.x + baseOffsetX;
-                    const spriteY = coords.y + baseOffsetY;
-                    
-                    sprite.setPosition(spriteX, spriteY);
+                   
+                    sprite.setPosition(coords.x, coords.y);
                     label.setPosition(coords.x, coords.y - 40); // Label stays above tile center
                     
                     // Highlight current player's turn - only highlight the text label
@@ -1098,7 +1101,7 @@
                             sprite.setScale(1.3); // Make both players even larger for final victory
                             sprite.setStrokeStyle(5, 0xff6b35); // Bright orange border for final victory
                         } else {
-                            const baseScale = (coords.tileSize * 2.0) / 64;
+                            const baseScale = 4;
                             sprite.setScale(baseScale * 1.3);
                             sprite.setTint(0xff6b35); // Orange tint for victory
                         }
@@ -1108,7 +1111,7 @@
                             sprite.setScale(1.2); // Make both players larger
                             sprite.setStrokeStyle(4, 0xffd700); // Gold border for victory
                         } else {
-                            const baseScale = (coords.tileSize * 2.0) / 64;
+                            const baseScale = 4;
                             sprite.setScale(baseScale * 1.2);
                             sprite.setTint(0xffd700); // Gold tint for victory
                         }
