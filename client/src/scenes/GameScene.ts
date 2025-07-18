@@ -576,7 +576,8 @@ export class GameScene extends Phaser.Scene {
                     sprite = this.add.sprite(coords.x, coords.y, spriteKey) as Phaser.GameObjects.Sprite;
                     sprite.setOrigin(0.5, 0.5);
                     
-                    const scale = (coords.tileSize * 4.0) / 100;
+                    // Use consistent character scale regardless of map tile size
+                    const scale = 2.0; // Fixed scale for consistent character size
                     sprite.setScale(scale);
                     sprite.setDepth(100);
                     
@@ -598,10 +599,11 @@ export class GameScene extends Phaser.Scene {
                     
                     console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey}`);
                 } else {
-                    // Fallback to colored rectangle
+                    // Fallback to colored rectangle with consistent size
                     console.warn(`⚠️ Sprite '${spriteKey}' not available, using rectangle fallback for ${playerId}`);
                     const color = playerId === 'player1' ? 0x3498db : 0xe74c3c;
-                    sprite = this.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
+                    const rectSize = 40; // Fixed size regardless of tile size
+                    sprite = this.add.rectangle(coords.x, coords.y, rectSize, rectSize, color);
                     sprite.setStrokeStyle(2, 0xffffff);
                     sprite.setDepth(100);
                 }
@@ -690,31 +692,23 @@ export class GameScene extends Phaser.Scene {
                 sprite.setPosition(coords.x, coords.y);
                 label.setPosition(coords.x, coords.y - 40);
                 
-                // Highlight current player's turn
+                // Keep character sprites clean and consistent - no tints or scaling
+                if (sprite.clearTint) {
+                    sprite.clearTint(); // Always clear any tints from previous states
+                }
+                sprite.setScale(2.0); // Always maintain consistent scale
+                
+                // Highlight current player's turn (only affects labels)
                 if (this.serverGameState.gameStarted && this.serverGameState.currentPlayerTurn === playerId) {
                     label.setStyle({ fontSize: '16px', color: '#ffff00', fontWeight: 'bold', stroke: '#000000', strokeThickness: 3 });
                 } else {
                     label.setStyle({ fontSize: '12px', color: '#ffffff', fontWeight: 'normal', stroke: '#000000', strokeThickness: 2 });
                 }
                 
-                // Victory effects
+                // Victory effects only for labels (characters stay clean)
                 if (this.serverGameState.gameCompleted) {
-                    if (sprite.setStrokeStyle) {
-                        sprite.setScale(1.3);
-                        sprite.setStrokeStyle(5, 0xff6b35);
-                    } else if (sprite.setTint) {
-                        sprite.setScale(4 * 1.3);
-                        sprite.setTint(0xff6b35);
-                    }
                     label.setStyle({ fontSize: '18px', color: '#ff6b35', fontWeight: 'bold' });
                 } else if (this.serverGameState.gameWon) {
-                    if (sprite.setStrokeStyle) {
-                        sprite.setScale(1.2);
-                        sprite.setStrokeStyle(4, 0xffd700);
-                    } else if (sprite.setTint) {
-                        sprite.setScale(4 * 1.2);
-                        sprite.setTint(0xffd700);
-                    }
                     label.setStyle({ fontSize: '16px', color: '#ffd700', fontWeight: 'bold' });
                 }
             }
