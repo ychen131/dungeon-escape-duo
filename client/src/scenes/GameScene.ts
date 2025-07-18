@@ -24,6 +24,22 @@ interface GameState {
     disconnectedPlayer?: {
         playerId: string;
     };
+    // Level 1 cooperative puzzle objects
+    key?: {
+        x: number;
+        y: number;
+        heldBy: string | null;
+    };
+    fires?: Array<{
+        x: number;
+        y: number;
+        isDoused: boolean;
+    }>;
+    door?: {
+        x: number;
+        y: number;
+        isUnlocked: boolean;
+    };
 }
 
 export class GameScene extends Phaser.Scene {
@@ -55,6 +71,17 @@ export class GameScene extends Phaser.Scene {
         this.load.spritesheet('orc', 'orc.png', { 
             frameWidth: 100, 
             frameHeight: 100 
+        });
+        
+        // Load cooperative puzzle spritesheets
+        console.log('🗝️ Loading puzzle item spritesheets...');
+        this.load.spritesheet('key', 'key.png', {
+            frameWidth: 16, // 128px ÷ 8 frames = 16px per frame
+            frameHeight: 16, // Height is 16px
+        });
+        this.load.spritesheet('fire', 'fire.png', {
+            frameWidth: 32, // 448px ÷ 14 frames = 32px per frame
+            frameHeight: 48, // Height is 48px
         });
         
         // Keep loading individual tiles as backup for fallback mode
@@ -202,6 +229,34 @@ export class GameScene extends Phaser.Scene {
         } else {
             console.warn('⚠️ Orc sprite sheet not loaded, skipping animations');
         }
+        
+        // Key animations
+        if (this.textures.exists('key')) {
+            this.anims.create({
+                key: 'key_shine',
+                frames: this.anims.generateFrameNumbers('key', { start: 0, end: 7 }), // Assuming 8 frames
+                frameRate: 10,
+                repeat: -1, // Loop forever
+            });
+            
+            console.log('✅ Key animations created');
+        } else {
+            console.warn('⚠️ Key sprite sheet not loaded, skipping animations');
+        }
+        
+        // Fire animations
+        if (this.textures.exists('fire')) {
+            this.anims.create({
+                key: 'fire_burn',
+                frames: this.anims.generateFrameNumbers('fire', { start: 0, end: 13 }), // 14 frames (448÷32=14)
+                frameRate: 12,
+                repeat: -1, // Loop forever
+            });
+            
+            console.log('✅ Fire animations created');
+        } else {
+            console.warn('⚠️ Fire sprite sheet not loaded, skipping animations');
+        }
     }
 
     private setupKeyboardInput() {
@@ -234,6 +289,16 @@ export class GameScene extends Phaser.Scene {
 
         this.socket.on('gameState', (newGameState: GameState) => {
             this.handleGameState(newGameState);
+        });
+
+        this.socket.on('doorMessage', (data: { message: string }) => {
+            console.log('Door message:', data.message);
+            this.updateStatus(data.message, '#f39c12', '16px', 'normal');
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
         });
     }
 
@@ -545,6 +610,112 @@ export class GameScene extends Phaser.Scene {
                     label.setStyle({ fontSize: '16px', color: '#ffd700', fontWeight: 'bold' });
                 }
             }
+        }
+
+        // Render cooperative puzzle objects
+        this.renderPuzzleObjects();
+    }
+
+    private renderPuzzleObjects() {
+        if (!this.serverGameState) return;
+
+        // Get tile size and calculate positions (same helper as player sprites)
+        const getTilePixelPosition = (tileX: number, tileY: number) => {
+            const tileSize = 50;
+            const canvasWidth = 800;
+            const canvasHeight = 600;
+            const mapWidthPixels = 12 * tileSize;  // 12 tiles wide
+            const mapHeightPixels = 9 * tileSize;  // 9 tiles tall
+            
+            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // Same as tilemap offset
+            const offsetY = (canvasHeight - mapHeightPixels) / 2; // Same as tilemap offset
+            
+            return {
+                x: offsetX + (tileX * tileSize) + (tileSize / 2),
+                y: offsetY + (tileY * tileSize) + (tileSize / 2),
+                tileSize
+            };
+        };
+
+        // Clear old puzzle object sprites
+        const puzzleObjectKeys = ['key', 'fire_0', 'fire_1', 'door', 'door_label'];
+        puzzleObjectKeys.forEach(key => {
+            if (this.playerSprites[key]) {
+                (this.playerSprites[key] as any).destroy();
+                delete this.playerSprites[key];
+            }
+        });
+
+        // Draw the key if it's not held by a player
+        if (this.serverGameState.key && !this.serverGameState.key.heldBy) {
+            const coords = getTilePixelPosition(this.serverGameState.key.x, this.serverGameState.key.y);
+            
+            if (this.textures.exists('key')) {
+                const keySprite = this.add.sprite(coords.x, coords.y, 'key');
+                keySprite.setOrigin(0.5, 0.5);
+                keySprite.setDepth(90); // Below players but above tiles
+                keySprite.play('key_shine');
+                this.playerSprites['key'] = keySprite;
+                console.log('✨ Rendered animated key');
+            } else {
+                console.warn('⚠️ Key sprite not available, skipping key rendering');
+            }
+        }
+
+        // Draw the fires if they are not doused
+        if (this.serverGameState.fires) {
+            this.serverGameState.fires.forEach((fireState, index) => {
+                if (!fireState.isDoused) {
+                    const coords = getTilePixelPosition(fireState.x, fireState.y);
+                    
+                    if (this.textures.exists('fire')) {
+                        const fireSprite = this.add.sprite(coords.x, coords.y, 'fire');
+                        fireSprite.setOrigin(0.5, 0.5);
+                        fireSprite.setDepth(90); // Below players but above tiles
+                        fireSprite.play('fire_burn');
+                        this.playerSprites[`fire_${index}`] = fireSprite;
+                        console.log(`🔥 Rendered animated fire ${index}`);
+                    } else {
+                        console.warn('⚠️ Fire sprite not available, skipping fire rendering');
+                    }
+                }
+            });
+        }
+
+        // Draw the door
+        if (this.serverGameState.door) {
+            const coords = getTilePixelPosition(this.serverGameState.door.x, this.serverGameState.door.y);
+            
+            // Determine door appearance based on state
+            let doorColor = 0x8b4513; // Default brown (locked)
+            let doorIcon = '🔒';
+            let strokeColor = 0x000000; // Default black stroke
+            
+            if (this.serverGameState.door.isUnlocked) {
+                doorColor = 0x2ecc71; // Green (unlocked)
+                doorIcon = '🚪';
+            } else if (this.serverGameState.key && this.serverGameState.key.heldBy) {
+                doorColor = 0xf39c12; // Orange (highlighted - someone has key)
+                doorIcon = '🔑';
+                strokeColor = 0xffd700; // Golden stroke for highlight
+            }
+            
+            const doorRect = this.add.rectangle(coords.x, coords.y, 40, 40, doorColor);
+            doorRect.setStrokeStyle(4, strokeColor);
+            doorRect.setDepth(90); // Below players but above tiles
+            this.playerSprites['door'] = doorRect;
+            
+            // Add door label
+            const doorLabel = this.add.text(coords.x, coords.y, doorIcon, {
+                fontSize: '20px',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            doorLabel.setDepth(91);
+            this.playerSprites['door_label'] = doorLabel;
+            
+            const doorState = this.serverGameState.door.isUnlocked ? 'unlocked' : 
+                             (this.serverGameState.key?.heldBy ? 'highlighted' : 'locked');
+            console.log(`🚪 Rendered door (${doorState})`);
         }
     }
 

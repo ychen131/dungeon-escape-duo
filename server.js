@@ -309,6 +309,21 @@ const gameState = {
   currentLevel: currentLevel, // Current difficulty level
   mapIndex: currentMapIndex, // Current map within the level
   levelProgression: 1, // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
+  // Level 1 cooperative puzzle objects
+  key: {
+    x: 1,
+    y: 2, // Moved down one tile to floor
+    heldBy: null, // Track which player ID has the key
+  },
+  fires: [
+    { x: 2, y: 2, isDoused: false }, // Fire guarding the key (moved to floor)
+    { x: 6, y: 5, isDoused: false }, // Fire blocking the central path
+  ],
+  door: {
+    x: 9,
+    y: 2,
+    isUnlocked: false,
+  },
 };
 
 // Player starting positions (will be updated based on map size)
@@ -530,13 +545,59 @@ function broadcastCustomizedGameState() {
   }
 }
 
+// Helper function to check adjacency between two positions
+function isAdjacent(pos1, pos2) {
+  const dx = Math.abs(pos1.x - pos2.x);
+  const dy = Math.abs(pos1.y - pos2.y);
+  return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
+}
+
+// Helper function to check door win condition (both players at unlocked door)
+function checkDoorWinCondition() {
+  if (!gameState.door || !gameState.door.isUnlocked) {
+    return false;
+  }
+
+  const players = Object.values(gameState.players);
+  if (players.length < 2) {
+    return false;
+  }
+
+  // Check if both players are at the door tile
+  const bothAtDoor = players.every(
+    player => player.x === gameState.door.x && player.y === gameState.door.y
+  );
+
+  if (bothAtDoor) {
+    console.log('🎉 Both players reached the door! Level completed!');
+    gameState.gameWon = true;
+    gameState.victoryTime = new Date().toISOString();
+
+    // Advance to next level after a brief delay
+    setTimeout(() => {
+      advanceToNextLevel();
+    }, 2000);
+
+    // Broadcast victory state
+    broadcastCustomizedGameState();
+    return true;
+  }
+
+  return false;
+}
+
 // Helper function to assign random items to players
 function assignRandomItems() {
-  const itemTypes = Object.values(ITEM_TYPES);
-
-  // Assign random items to each player
-  gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-  gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  // For Level 1 cooperative puzzle, both players get "Douse Fire" items
+  if (currentLevel === 'level1') {
+    gameState.playerItems.player1 = ITEM_TYPES.DOUSE_FIRE;
+    gameState.playerItems.player2 = ITEM_TYPES.DOUSE_FIRE;
+  } else {
+    // For other levels, assign random items
+    const itemTypes = Object.values(ITEM_TYPES);
+    gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  }
 
   console.log(
     `Items assigned - Player1: ${gameState.playerItems.player1}, Player2: ${gameState.playerItems.player2}`
@@ -763,6 +824,30 @@ io.on('connection', socket => {
           return;
         }
 
+        // === SPECIAL CASE: DOOR ESCAPE ===
+        // Check if player is trying to escape through the door
+        if (
+          gameState.door &&
+          gameState.key &&
+          gameState.key.heldBy === playerId &&
+          gameState.door.isUnlocked &&
+          isAdjacent(player, gameState.door)
+        ) {
+          console.log(`Player ${playerId} is escaping through the door!`);
+
+          // Send escape message to player
+          const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
+          if (socket) {
+            socket.emit('doorMessage', {
+              message: '🎉 You escaped! Checking if your partner is ready...',
+            });
+          }
+
+          // Check if both players are at the door for level completion
+          checkDoorWinCondition();
+          return; // Don't process as regular item use
+        }
+
         // Find adjacent hazard tiles that this item can affect
         const playerX = player.x;
         const playerY = player.y;
@@ -789,11 +874,23 @@ io.on('connection', socket => {
           const tileType = gameState.dungeonLayout[pos.y][pos.x];
 
           // Check if item can be used on this tile
-          if (item === ITEM_TYPES.DOUSE_FIRE && tileType === TILE_TYPES.FIRE_HAZARD) {
-            // Remove fire hazard
-            gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
-            console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
-            itemUsed = true;
+          if (item === ITEM_TYPES.DOUSE_FIRE) {
+            // For Level 1 cooperative puzzle, check fires array
+            if (currentLevel === 'level1' && Array.isArray(gameState.fires)) {
+              const fireAtPos = gameState.fires.find(
+                f => f.x === pos.x && f.y === pos.y && !f.isDoused
+              );
+              if (fireAtPos) {
+                fireAtPos.isDoused = true;
+                console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
+                itemUsed = true;
+              }
+            } else if (tileType === TILE_TYPES.FIRE_HAZARD) {
+              // Fallback for other levels - use dungeon layout
+              gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+              console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
+              itemUsed = true;
+            }
           } else if (item === ITEM_TYPES.BUILD_BRIDGE && tileType === TILE_TYPES.CHASM) {
             // Fill chasm with bridge
             gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
@@ -924,6 +1021,19 @@ io.on('connection', socket => {
           return; // Cannot move onto hazards directly
         }
 
+        // Prevent movement onto undoused fire tiles (from fires array)
+        if (Array.isArray(gameState.fires)) {
+          const fireAtTarget = gameState.fires.find(
+            f => f.x === newX && f.y === newY && !f.isDoused
+          );
+          if (fireAtTarget) {
+            console.log(
+              `Move blocked: ${playerId} tried to move onto undoused fire at (${newX}, ${newY})`
+            );
+            return; // Cannot move onto undoused fire
+          }
+        }
+
         // Exit tiles are walkable (no blocking needed)
 
         // Valid move - update player position and direction in game state
@@ -931,10 +1041,51 @@ io.on('connection', socket => {
         player.y = newY;
         player.lastMoveDirection = direction; // Store direction for sprite flipping
 
+        // === KEY PICKUP LOGIC ===
+        if (
+          gameState.key &&
+          !gameState.key.heldBy &&
+          player.x === gameState.key.x &&
+          player.y === gameState.key.y
+        ) {
+          gameState.key.heldBy = playerId;
+          console.log(`Player ${playerId} picked up the key!`);
+        }
+
+        // === DOOR INTERACTION LOGIC ===
+        if (gameState.door) {
+          const isAdjacentToDoor = isAdjacent(player, gameState.door);
+
+          if (isAdjacentToDoor && gameState.key) {
+            if (gameState.key.heldBy === playerId && !gameState.door.isUnlocked) {
+              // Player has key and is adjacent to door - auto-unlock
+              gameState.door.isUnlocked = true;
+              console.log(`Player ${playerId} unlocked the door!`);
+            } else if (!gameState.key.heldBy && !gameState.door.isUnlocked) {
+              // Player is near door but no one has the key yet
+              console.log(`Player ${playerId} approached the door but needs the key first`);
+              // Send reminder message to this specific player
+              const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
+              if (socket) {
+                socket.emit('doorMessage', {
+                  message: '🔒 You need the key to unlock this door! Find it first.',
+                });
+              }
+            }
+          }
+        }
+
         console.log(`${playerId} moved to (${newX}, ${newY}) facing ${direction}`);
 
-        // Check for win condition after the move
-        const gameWon = checkWinCondition();
+        // Check for win condition after the move - use appropriate win condition for level
+        let gameWon = false;
+        if (currentLevel === 'level1') {
+          // Level 1 uses door-based win condition
+          gameWon = checkDoorWinCondition();
+        } else {
+          // Other levels use exit tile win condition
+          gameWon = checkWinCondition();
+        }
 
         if (!gameWon) {
           // Only switch turns if game hasn't been won
