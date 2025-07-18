@@ -192,15 +192,15 @@ function detectContentBounds(layout) {
 
 const MAP_POOL = {
   level1: [
-    // Level 1 - Use the tilemap file for now, can add more later
-    'public/assets/level1.tmj',
+    // Level 1 - Use the tilemap file from the source directory (for server parsing)
+    'client/public/assets/level1.tmj', // Server reads from source for parsing
     // Future tilemaps can be added here:
-    // 'public/assets/level1_alt1.tmj',
-    // 'public/assets/level1_alt2.tmj'
+    // 'client/public/assets/level1_alt1.tmj',
+    // 'client/public/assets/level1_alt2.tmj'
   ],
   level2: [
-    // Level 2 - For now, fall back to hardcoded if no tilemap available
-    // 'public/assets/level2.tmj'
+    // Level 2 - We'll add the tilemap file here when created
+    // 'client/public/assets/level2.tmj' // Will be added when we create Level 2 assets
     // Fallback to hardcoded arrays for level 2 for now
     [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
