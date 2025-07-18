@@ -264,9 +264,8 @@ const LEVELS = {
     gameObjects: {
       // Based on analyzing the tmj file, identifying key positions
       fires: [
-        { x: 9, y: 8, isDoused: false }, // Fire tile (ID 7) from Layer 3
-        { x: 13, y: 9, isDoused: false }, // Another fire tile from Layer 3
-        { x: 15, y: 11, isDoused: false }, // Third fire tile from Layer 3
+        { x: 6, y: 6, isDoused: false }, // Fire tile (ID 7) from Layer 3
+        { x: 9, y: 5, isDoused: false }, // Another fire tile from Layer 3
       ],
       pressurePlate: {
         x: 7,
