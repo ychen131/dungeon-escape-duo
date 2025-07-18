@@ -1122,6 +1122,45 @@ io.on('connection', socket => {
         });
       }
     });
+
+    // Handle end turn requests from this client
+    socket.on('endTurn', () => {
+      try {
+        const player = gameState.players[playerId];
+
+        if (!player) {
+          console.warn(`⚠️  endTurn from non-existent player: ${playerId}`);
+          return;
+        }
+
+        // Check if game has started and it's this player's turn
+        if (!gameState.gameStarted) {
+          console.log(`End turn rejected: Game not started`);
+          return;
+        }
+
+        if (gameState.currentPlayerTurn !== playerId) {
+          console.log(`End turn rejected: Not ${playerId}'s turn (current: ${gameState.currentPlayerTurn})`);
+          return;
+        }
+
+        // Player is ending their turn early
+        console.log(`${playerId} ended their turn early (had ${gameState.actionsRemaining} actions remaining)`);
+        
+        // Switch turns immediately
+        switchTurn();
+
+        // Broadcast updated game state to all clients
+        broadcastCustomizedGameState();
+      } catch (endTurnError) {
+        console.error(`❌ Error processing end turn for ${playerId}:`, endTurnError);
+        // Send error state to player
+        socket.emit('gameError', {
+          message: 'End turn processing failed',
+          error: endTurnError.message,
+        });
+      }
+    });
   } else {
     // No available slots - reject connection
     console.log(`Connection rejected for ${socket.id}: Game is full`);
