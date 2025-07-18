@@ -25,6 +25,9 @@ const io = socketIo(server, {
 // Serve static files from the client build directory
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
+// Constants
+const LEVEL_TRANSITION_DELAY_MS = 2000;
+
 // Tilemap tile ID to game logic mapping (matches client-side mapping)
 // Based on careful analysis of the Cardinal Zebra tileset and layer data
 const TILEMAP_TO_LOGIC = {
@@ -119,8 +122,7 @@ function parseTilemapToGameLogic(tilemapData) {
             const chunkX = chunk.x;
             const chunkY = chunk.y;
             const chunkWidth = chunk.width;
-            const chunkHeight = chunk.height;
-            
+
             for (let i = 0; i < chunk.data.length; i++) {
               const tileId = chunk.data[i];
               const localX = i % chunkWidth;
@@ -267,16 +269,19 @@ const LEVELS = {
         { x: 15, y: 11, isDoused: false }, // Third fire tile from Layer 3
       ],
       pressurePlate: {
-        x: 7, y: 4, // Pressure plate tile (ID 28) from Layer 3
+        x: 7,
+        y: 4, // Pressure plate tile (ID 28) from Layer 3
         isPressed: false,
       },
       trapDoor: {
-        x: 12, y: 9, // Trap door area from analyzing the layout
+        x: 12,
+        y: 9, // Trap door area from analyzing the layout
         isOpen: false, // Closed by default, opens when pressure plate is pressed
       },
       slimes: [
         {
-          x: 6, y: 4, // Slime position based on the map analysis
+          x: 6,
+          y: 4, // Slime position based on the map analysis
           isStunned: false,
           stunDuration: 0,
         },
@@ -385,7 +390,7 @@ function loadNewMap(level = null) {
   // Initialize level-specific game objects
   if (levelData.gameObjects) {
     // Deep copy game objects to avoid reference issues
-    
+
     // Level 1 objects
     if (levelData.gameObjects.key) {
       gameState.key = { ...levelData.gameObjects.key };
@@ -396,7 +401,7 @@ function loadNewMap(level = null) {
     if (levelData.gameObjects.door) {
       gameState.door = { ...levelData.gameObjects.door };
     }
-    
+
     // Level 2 objects
     if (levelData.gameObjects.pressurePlate) {
       gameState.pressurePlate = { ...levelData.gameObjects.pressurePlate };
@@ -415,9 +420,7 @@ function loadNewMap(level = null) {
   // Ensure starting positions are safe
   ensureSafeStartingPositions();
 
-  console.log(
-    `🗺️  Loaded map: ${levelData.name} (${GRID_WIDTH}x${GRID_HEIGHT})`
-  );
+  console.log(`🗺️  Loaded map: ${levelData.name} (${GRID_WIDTH}x${GRID_HEIGHT})`);
 }
 
 // Function to ensure starting positions are safe (no hazards)
@@ -636,7 +639,7 @@ function checkDoorWinCondition() {
     // Advance to next level after a brief delay
     setTimeout(() => {
       advanceToNextLevel();
-    }, 2000);
+    }, LEVEL_TRANSITION_DELAY_MS);
 
     // Broadcast victory state
     broadcastCustomizedGameState();
@@ -1263,7 +1266,7 @@ io.on('connection', socket => {
           broadcastCustomizedGameState();
           setTimeout(() => {
             advanceToNextLevel();
-          }, 2000);
+          }, LEVEL_TRANSITION_DELAY_MS);
         } else if (currentLevel === 'level2') {
           console.log('🚀 Simulating Level 2 → Level 1 progression (for testing)');
           loadNewMap('level1');
