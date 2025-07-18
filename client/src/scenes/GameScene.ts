@@ -52,6 +52,12 @@ export class GameScene extends Phaser.Scene {
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
+    private tilemapLayers: Phaser.Tilemaps.TilemapLayer[] = []; // Track active tilemap layers
+    
+    // Dynamic map sizing - will be set when tilemap is rendered
+    private currentTileSize: number = 50; // Default tile size
+    private currentMapOffsetX: number = 0; // Current map offset X
+    private currentMapOffsetY: number = 0; // Current map offset Y
 
     constructor() {
         super({ key: 'GameScene' });
@@ -60,9 +66,10 @@ export class GameScene extends Phaser.Scene {
     preload() {
         console.log('🎮 Loading game assets...');
         
-        // Load tileset and tilemap
+        // Load tileset and tilemaps
         this.load.image('tiles', 'Full.png');
         this.load.tilemapTiledJSON('level1', 'level1.tmj');
+        this.load.tilemapTiledJSON('level2', 'level2.tmj');
         
         // Load player character sprite sheets
         console.log('🏃 Loading character sprite sheets...');
@@ -135,12 +142,33 @@ export class GameScene extends Phaser.Scene {
         const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
         this.socket = (window as any).io(serverUrl);
         
+        // Expose socket globally for testing
+        (window as any).socket = this.socket;
+        console.log('🧪 Exposed socket to window for testing');
+        console.log('🧪 Use: socket.emit("testWin") to test level progression');
+        
         // Set up socket event listeners
         this.setupSocketListeners();
     }
 
-    private renderTilemap() {
+    private destroyCurrentTilemap() {
+        // Destroy all existing tilemap layers
+        this.tilemapLayers.forEach(layer => {
+            if (layer && layer.destroy) {
+                layer.destroy();
+            }
+        });
+        this.tilemapLayers = [];
+        console.log('🧹 Destroyed existing tilemap layers');
+    }
+
+    private renderTilemap(level: string = 'level1') {
         try {
+            console.log(`🎯 Rendering tilemap for ${level}`);
+            
+            // Destroy existing tilemap layers first
+            this.destroyCurrentTilemap();
+            
             // Check if tileset image loaded
             if (!this.textures.exists('tiles')) {
                 console.warn('⚠️  Tileset image "tiles" not loaded, using fallback mode');
@@ -148,9 +176,9 @@ export class GameScene extends Phaser.Scene {
             }
             
             // Try to create tilemap from loaded data
-            const map = this.make.tilemap({ key: 'level1' });
+            const map = this.make.tilemap({ key: level });
             if (!map) {
-                console.warn('⚠️  Failed to create tilemap');
+                console.warn(`⚠️  Failed to create tilemap for ${level}`);
                 return false;
             }
             
@@ -164,39 +192,86 @@ export class GameScene extends Phaser.Scene {
                 return false;
             }
             
-            // Calculate centering offset for the tilemap
-            const tileSize = 50; // Our desired tile size after scaling
-            const mapWidthPixels = map.width * tileSize;  // 12 * 50 = 600
-            const mapHeightPixels = map.height * tileSize; // 9 * 50 = 450
+            // Better sizing strategy: Use reasonable tile size for good visibility
             const canvasWidth = 800;
             const canvasHeight = 600;
             
-            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // (800 - 600) / 2 = 100
-            const offsetY = (canvasHeight - mapHeightPixels) / 2; // (600 - 450) / 2 = 75
+            // Use a much larger base tile size for better visibility
+            let tileSize = 50; // Larger base size for better game experience
             
-            console.log(`🎯 Centering tilemap: offset (${offsetX}, ${offsetY}), map size ${mapWidthPixels}x${mapHeightPixels}`);
+            // Only scale down for extremely large maps (bigger than 40x30)
+            if (map.width > 40 || map.height > 30) {
+                // For truly massive maps, scale down but keep readable
+                const maxTileSizeByWidth = (canvasWidth - 50) / map.width;
+                const maxTileSizeByHeight = (canvasHeight - 50) / map.height;
+                tileSize = Math.max(35, Math.min(maxTileSizeByWidth, maxTileSizeByHeight)); // Minimum 35px
+                console.log(`📏 Extremely large map detected, adjusted tile size to ${tileSize.toFixed(1)}px`);
+            } else {
+                console.log(`🎯 Using full tile size of ${tileSize}px for good visibility`);
+            }
+            
+            // Store current sizing for player/object positioning
+            this.currentTileSize = tileSize;
+            
+            const finalMapWidthPixels = map.width * tileSize;
+            const finalMapHeightPixels = map.height * tileSize;
+            
+            // Center the map on canvas (large maps will extend beyond canvas - this is good!)
+            const offsetX = (canvasWidth - finalMapWidthPixels) / 2;
+            const offsetY = (canvasHeight - finalMapHeightPixels) / 2;
+            
+            // Manual positioning adjustments for Level 2 only
+            let finalOffsetX = offsetX;
+            let finalOffsetY = offsetY;
+            
+            if (level === 'level2') {
+                // Only Level 2 gets the positioning adjustment
+                finalOffsetX = offsetX + 75; // Move right
+                finalOffsetY = offsetY + 85; // Move down
+            }
+            
+            // Store current offsets for player/object positioning
+            this.currentMapOffsetX = finalOffsetX;
+            this.currentMapOffsetY = finalOffsetY;
+            
+            console.log(`🎯 Map rendering: ${map.width}x${map.height} at ${tileSize.toFixed(1)}px tiles`);
+            console.log(`📐 Positioned at offset (${finalOffsetX.toFixed(1)}, ${finalOffsetY.toFixed(1)}), map size ${finalMapWidthPixels.toFixed(1)}x${finalMapHeightPixels.toFixed(1)}`);
+            if (finalMapWidthPixels > canvasWidth || finalMapHeightPixels > canvasHeight) {
+                console.log(`✅ Map extends beyond canvas - perfect for detailed gameplay!`);
+            }
 
             // Create tile layers (render all layers from the tilemap)
             map.layers.forEach((layerData, index) => {
                 console.log(`🎨 Creating layer ${index}: ${layerData.name}`);
-                const layer = map.createLayer(layerData.name, tileset, offsetX, offsetY);
+                const layer = map.createLayer(layerData.name, tileset, finalOffsetX, finalOffsetY);
                 if (layer) {
-                    // Scale the layer to make tiles bigger (32x32 -> 50x50)
-                    const scale = tileSize / 32; // Scale factor from tileset to desired tile size
+                    // Scale the layer to the calculated tile size
+                    const scale = tileSize / 32; // Scale factor from tileset (32px) to desired tile size
                     layer.setScale(scale);
-                    console.log(`✅ Layer '${layerData.name}' created successfully at offset (${offsetX}, ${offsetY})`);
+                    layer.setDepth(0); // Set depth to ensure proper layering
+                    this.tilemapLayers.push(layer); // Track this layer for cleanup
+                    console.log(`✅ Layer '${layerData.name}' created at scale ${scale.toFixed(2)}`);
                 } else {
                     console.warn(`⚠️  Failed to create layer: ${layerData.name}`);
                 }
             });
             
-            console.log('✅ Tilemap rendering complete');
+            console.log(`✅ Tilemap rendering complete for ${level}: ${this.tilemapLayers.length} layers created`);
             return true;
             
         } catch (error) {
             console.error('❌ Error rendering tilemap:', error);
             return false;
         }
+    }
+
+    // Centralized method to get pixel position of a tile using current dynamic sizing
+    private getTilePixelPosition(tileX: number, tileY: number) {
+        return {
+            x: this.currentMapOffsetX + (tileX * this.currentTileSize) + (this.currentTileSize / 2),
+            y: this.currentMapOffsetY + (tileY * this.currentTileSize) + (this.currentTileSize / 2),
+            tileSize: this.currentTileSize
+        };
     }
 
     private createCharacterAnimations() {
@@ -326,11 +401,20 @@ export class GameScene extends Phaser.Scene {
                 return;
             }
             
+            // Check if level changed - re-render tilemap if needed
+            const levelChanged = this.serverGameState?.currentLevel !== newGameState.currentLevel;
+            
             this.serverGameState = newGameState;
         
             if (newGameState.yourPlayerId) {
                 this.myPlayerId = newGameState.yourPlayerId;
                 console.log('Assigned as:', this.myPlayerId);
+            }
+            
+            // Re-render tilemap if level changed
+            if (levelChanged && newGameState.currentLevel) {
+                console.log(`🔄 Level changed to ${newGameState.currentLevel}, re-rendering tilemap`);
+                this.renderTilemap(newGameState.currentLevel);
             }
             
             this.updateGameStatus();
@@ -465,29 +549,11 @@ export class GameScene extends Phaser.Scene {
     private updatePlayerSprites() {
         if (!this.serverGameState) return;
 
-        // Get tile size and calculate positions (matching centered tilemap offset)
-        const getTilePixelPosition = (tileX: number, tileY: number) => {
-            const tileSize = 50;
-            const canvasWidth = 800;
-            const canvasHeight = 600;
-            const mapWidthPixels = 12 * tileSize;  // 12 tiles wide
-            const mapHeightPixels = 9 * tileSize;  // 9 tiles tall
-            
-            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // Same as tilemap offset
-            const offsetY = (canvasHeight - mapHeightPixels) / 2; // Same as tilemap offset
-            
-            return {
-                x: offsetX + (tileX * tileSize) + (tileSize / 2),
-                y: offsetY + (tileY * tileSize) + (tileSize / 2),
-                tileSize
-            };
-        };
-
         // Create or update player sprites
         for (const [playerId, player] of Object.entries(this.serverGameState.players)) {
             if (!this.playerSprites[playerId]) {
                 // Create new player sprite
-                const coords = getTilePixelPosition(player.x, player.y);
+                const coords = this.getTilePixelPosition(player.x, player.y);
                 
                 let spriteKey: string;
                 let walkAnim: string;
@@ -510,7 +576,8 @@ export class GameScene extends Phaser.Scene {
                     sprite = this.add.sprite(coords.x, coords.y, spriteKey) as Phaser.GameObjects.Sprite;
                     sprite.setOrigin(0.5, 0.5);
                     
-                    const scale = (coords.tileSize * 4.0) / 100;
+                    // Use consistent character scale regardless of map tile size
+                    const scale = 2.0; // Fixed scale for consistent character size
                     sprite.setScale(scale);
                     sprite.setDepth(100);
                     
@@ -532,10 +599,11 @@ export class GameScene extends Phaser.Scene {
                     
                     console.log(`✅ Created animated sprite for ${playerId} using ${spriteKey}`);
                 } else {
-                    // Fallback to colored rectangle
+                    // Fallback to colored rectangle with consistent size
                     console.warn(`⚠️ Sprite '${spriteKey}' not available, using rectangle fallback for ${playerId}`);
                     const color = playerId === 'player1' ? 0x3498db : 0xe74c3c;
-                    sprite = this.add.rectangle(coords.x, coords.y, coords.tileSize - 10, coords.tileSize - 10, color);
+                    const rectSize = 40; // Fixed size regardless of tile size
+                    sprite = this.add.rectangle(coords.x, coords.y, rectSize, rectSize, color);
                     sprite.setStrokeStyle(2, 0xffffff);
                     sprite.setDepth(100);
                 }
@@ -580,7 +648,7 @@ export class GameScene extends Phaser.Scene {
             const label = this.playerSprites[playerId + '_label'] as any;
             
             if (sprite && label) {
-                const coords = getTilePixelPosition(player.x, player.y);
+                const coords = this.getTilePixelPosition(player.x, player.y);
                 
                 // Handle animations for sprite-based players
                 if (sprite.walkAnim) {
@@ -624,31 +692,23 @@ export class GameScene extends Phaser.Scene {
                 sprite.setPosition(coords.x, coords.y);
                 label.setPosition(coords.x, coords.y - 40);
                 
-                // Highlight current player's turn
+                // Keep character sprites clean and consistent - no tints or scaling
+                if (sprite.clearTint) {
+                    sprite.clearTint(); // Always clear any tints from previous states
+                }
+                sprite.setScale(2.0); // Always maintain consistent scale
+                
+                // Highlight current player's turn (only affects labels)
                 if (this.serverGameState.gameStarted && this.serverGameState.currentPlayerTurn === playerId) {
                     label.setStyle({ fontSize: '16px', color: '#ffff00', fontWeight: 'bold', stroke: '#000000', strokeThickness: 3 });
                 } else {
                     label.setStyle({ fontSize: '12px', color: '#ffffff', fontWeight: 'normal', stroke: '#000000', strokeThickness: 2 });
                 }
                 
-                // Victory effects
+                // Victory effects only for labels (characters stay clean)
                 if (this.serverGameState.gameCompleted) {
-                    if (sprite.setStrokeStyle) {
-                        sprite.setScale(1.3);
-                        sprite.setStrokeStyle(5, 0xff6b35);
-                    } else if (sprite.setTint) {
-                        sprite.setScale(4 * 1.3);
-                        sprite.setTint(0xff6b35);
-                    }
                     label.setStyle({ fontSize: '18px', color: '#ff6b35', fontWeight: 'bold' });
                 } else if (this.serverGameState.gameWon) {
-                    if (sprite.setStrokeStyle) {
-                        sprite.setScale(1.2);
-                        sprite.setStrokeStyle(4, 0xffd700);
-                    } else if (sprite.setTint) {
-                        sprite.setScale(4 * 1.2);
-                        sprite.setTint(0xffd700);
-                    }
                     label.setStyle({ fontSize: '16px', color: '#ffd700', fontWeight: 'bold' });
                 }
             }
@@ -661,24 +721,6 @@ export class GameScene extends Phaser.Scene {
     private renderPuzzleObjects() {
         if (!this.serverGameState) return;
 
-        // Get tile size and calculate positions (same helper as player sprites)
-        const getTilePixelPosition = (tileX: number, tileY: number) => {
-            const tileSize = 50;
-            const canvasWidth = 800;
-            const canvasHeight = 600;
-            const mapWidthPixels = 12 * tileSize;  // 12 tiles wide
-            const mapHeightPixels = 9 * tileSize;  // 9 tiles tall
-            
-            const offsetX = (canvasWidth - mapWidthPixels) / 2;   // Same as tilemap offset
-            const offsetY = (canvasHeight - mapHeightPixels) / 2; // Same as tilemap offset
-            
-            return {
-                x: offsetX + (tileX * tileSize) + (tileSize / 2),
-                y: offsetY + (tileY * tileSize) + (tileSize / 2),
-                tileSize
-            };
-        };
-
         // Clear old puzzle object sprites
         const puzzleObjectKeys = ['key', 'fire_0', 'fire_1', 'door', 'door_label'];
         puzzleObjectKeys.forEach(key => {
@@ -690,7 +732,7 @@ export class GameScene extends Phaser.Scene {
 
         // Draw the key if it's not held by a player
         if (this.serverGameState.key && !this.serverGameState.key.heldBy) {
-            const coords = getTilePixelPosition(this.serverGameState.key.x, this.serverGameState.key.y);
+            const coords = this.getTilePixelPosition(this.serverGameState.key.x, this.serverGameState.key.y);
             
             if (this.textures.exists('key')) {
                 const keySprite = this.add.sprite(coords.x, coords.y, 'key');
@@ -708,7 +750,7 @@ export class GameScene extends Phaser.Scene {
         if (this.serverGameState.fires) {
             this.serverGameState.fires.forEach((fireState, index) => {
                 if (!fireState.isDoused) {
-                    const coords = getTilePixelPosition(fireState.x, fireState.y);
+                    const coords = this.getTilePixelPosition(fireState.x, fireState.y);
                     
                     if (this.textures.exists('fire')) {
                         const fireSprite = this.add.sprite(coords.x, coords.y, 'fire');
@@ -726,7 +768,7 @@ export class GameScene extends Phaser.Scene {
 
         // Draw the door
         if (this.serverGameState.door) {
-            const coords = getTilePixelPosition(this.serverGameState.door.x, this.serverGameState.door.y);
+            const coords = this.getTilePixelPosition(this.serverGameState.door.x, this.serverGameState.door.y);
             
             // Determine door appearance based on state
             let doorColor = 0x8b4513; // Default brown (locked)

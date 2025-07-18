@@ -25,6 +25,9 @@ const io = socketIo(server, {
 // Serve static files from the client build directory
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
+// Constants
+const LEVEL_TRANSITION_DELAY_MS = 2000;
+
 // Tilemap tile ID to game logic mapping (matches client-side mapping)
 // Based on careful analysis of the Cardinal Zebra tileset and layer data
 const TILEMAP_TO_LOGIC = {
@@ -55,6 +58,8 @@ const TILEMAP_TO_LOGIC = {
   // Chasms/water (barrel/pot tiles) - from Layer 2
   41: 3,
   42: 3, // Barrel/pot tiles that represent chasms
+  // Pressure plate (Level 2 specific)
+  28: 0, // Pressure plate renders as floor but has special behavior
   // Floor tiles that were mistakenly identified as chasms
   43: 0,
   44: 0, // These are actually floor tiles, not chasms
@@ -93,19 +98,47 @@ function parseTilemapToGameLogic(tilemapData) {
 
     // Process each layer (later layers override earlier ones, but only if they have content)
     for (const layer of tilemapData.layers) {
-      if (layer.type === 'tilelayer' && layer.data) {
-        for (let i = 0; i < layer.data.length; i++) {
-          const tileId = layer.data[i];
-          const x = i % mapWidth;
-          const y = Math.floor(i / mapWidth);
+      if (layer.type === 'tilelayer') {
+        // Handle both flat data arrays and chunked data
+        if (layer.data) {
+          // Flat data array format (level1)
+          for (let i = 0; i < layer.data.length; i++) {
+            const tileId = layer.data[i];
+            const x = i % mapWidth;
+            const y = Math.floor(i / mapWidth);
 
-          if (y < mapHeight && x < mapWidth) {
-            if (tileId > 0) {
-              // Non-empty tile - use it (override any previous layer)
-              const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
-              fullLayout[y][x] = logicType;
+            if (y < mapHeight && x < mapWidth) {
+              if (tileId > 0) {
+                // Non-empty tile - use it (override any previous layer)
+                const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
+                fullLayout[y][x] = logicType;
+              }
+              // If tileId is 0 (empty), leave whatever was on lower layers
             }
-            // If tileId is 0 (empty), leave whatever was on lower layers
+          }
+        } else if (layer.chunks) {
+          // Chunked data format (level2)
+          for (const chunk of layer.chunks) {
+            const chunkX = chunk.x;
+            const chunkY = chunk.y;
+            const chunkWidth = chunk.width;
+
+            for (let i = 0; i < chunk.data.length; i++) {
+              const tileId = chunk.data[i];
+              const localX = i % chunkWidth;
+              const localY = Math.floor(i / chunkWidth);
+              const x = chunkX + localX;
+              const y = chunkY + localY;
+
+              if (y < mapHeight && x < mapWidth) {
+                if (tileId > 0) {
+                  // Non-empty tile - use it (override any previous layer)
+                  const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
+                  fullLayout[y][x] = logicType;
+                }
+                // If tileId is 0 (empty), leave whatever was on lower layers
+              }
+            }
           }
         }
       }
@@ -182,7 +215,7 @@ function detectContentBounds(layout) {
   return { minX, maxX, minY, maxY };
 }
 
-// Map Pool System - Tilemap files organized by difficulty
+// Simplified LEVELS structure - One map per level with level-specific configuration
 // Tile types in game logic:
 // 0 = floor tile (walkable)
 // 1 = wall tile (not walkable)
@@ -190,34 +223,88 @@ function detectContentBounds(layout) {
 // 3 = chasm (requires "Build Bridge" item to pass)
 // 4 = exit tile (goal for both players)
 
-const MAP_POOL = {
-  level1: [
-    // Level 1 - Use the tilemap file from the source directory (for server parsing)
-    'client/public/assets/level1.tmj', // Server reads from source for parsing
-    // Future tilemaps can be added here:
-    // 'client/public/assets/level1_alt1.tmj',
-    // 'client/public/assets/level1_alt2.tmj'
-  ],
-  level2: [
-    // Level 2 - We'll add the tilemap file here when created
-    // 'client/public/assets/level2.tmj' // Will be added when we create Level 2 assets
-    // Fallback to hardcoded arrays for level 2 for now
-    [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [1, 0, 2, 0, 1, 3, 0, 2, 0, 1, 0, 1],
-      [1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
-      [1, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 1],
-      [1, 0, 1, 1, 1, 1, 0, 1, 0, 2, 0, 1],
-      [1, 0, 3, 0, 2, 0, 0, 1, 0, 1, 0, 1],
-      [1, 0, 1, 0, 1, 0, 4, 0, 0, 3, 0, 1],
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    ],
-  ],
+const LEVELS = {
+  level1: {
+    mapFile: 'client/public/assets/level1.tmj',
+    name: 'Level 1: The Key and the Door',
+    // Level 1 specific game objects
+    gameObjects: {
+      key: {
+        x: 1,
+        y: 2,
+        heldBy: null, // Track which player ID has the key
+      },
+      fires: [
+        { x: 2, y: 2, isDoused: false }, // Fire guarding the key
+        { x: 6, y: 5, isDoused: false }, // Fire blocking the central path
+      ],
+      door: {
+        x: 9,
+        y: 2,
+        isUnlocked: false,
+      },
+    },
+    // Level 1 specific starting positions
+    startingPositions: {
+      player1: { x: 1, y: 6 }, // Player 1 (Soldier): bottom-left
+      player2: { x: 10, y: 2 }, // Player 2 (Orc): top-right
+    },
+    // Level 1 uses door-based win condition
+    winCondition: 'door',
+    // Both players get "Douse Fire" items in Level 1
+    playerItems: {
+      player1: 'Douse Fire',
+      player2: 'Douse Fire',
+    },
+  },
+  level2: {
+    mapFile: 'client/public/assets/level2.tmj',
+    name: 'Level 2: Pressure and Peril',
+    // Level 2 specific game objects based on analyzing level2.tmj
+    gameObjects: {
+      // Based on analyzing the tmj file, identifying key positions
+      fires: [
+        { x: 9, y: 8, isDoused: false }, // Fire tile (ID 7) from Layer 3
+        { x: 13, y: 9, isDoused: false }, // Another fire tile from Layer 3
+        { x: 15, y: 11, isDoused: false }, // Third fire tile from Layer 3
+      ],
+      pressurePlate: {
+        x: 7,
+        y: 4, // Pressure plate tile (ID 28) from Layer 3
+        isPressed: false,
+      },
+      trapDoor: {
+        x: 12,
+        y: 9, // Trap door area from analyzing the layout
+        isOpen: false, // Closed by default, opens when pressure plate is pressed
+      },
+      slimes: [
+        {
+          x: 6,
+          y: 4, // Slime position based on the map analysis
+          isStunned: false,
+          stunDuration: 0,
+        },
+      ],
+      // Exit tile should be detected from tile ID 4 in the parsed map
+    },
+    // Level 2 starting positions - placed in safe floor areas
+    startingPositions: {
+      player1: { x: 5, y: 6 }, // Safe starting position in the left section
+      player2: { x: 17, y: 5 }, // Safe starting position in the right section
+    },
+    // Level 2 uses exit tile win condition
+    winCondition: 'exit',
+    // Different items for Level 2 - both players get different tools
+    playerItems: {
+      player1: 'Douse Fire',
+      player2: 'Build Bridge',
+    },
+  },
 };
 
 // Current game settings
 let currentLevel = 'level1';
-let currentMapIndex = 0;
 
 // Grid configuration (will be updated dynamically based on loaded map)
 let GRID_WIDTH = 12;
@@ -240,32 +327,24 @@ const TILE_TYPES = {
 
 // Helper function to get current map layout
 function getCurrentMap() {
-  const levelMaps = MAP_POOL[currentLevel];
-  const mapData = levelMaps[currentMapIndex % levelMaps.length];
+  const levelData = LEVELS[currentLevel];
+  if (!levelData || !levelData.mapFile) {
+    console.error(`❌ No map file defined for ${currentLevel}`);
+    GRID_WIDTH = 12;
+    GRID_HEIGHT = 8;
+    return createDefaultMap();
+  }
 
-  // Check if it's a tilemap file path or hardcoded array
-  if (typeof mapData === 'string') {
-    // It's a tilemap file path
-    const tilemapResult = loadTilemapFromFile(mapData);
-    if (tilemapResult) {
-      // Update grid dimensions
-      GRID_WIDTH = tilemapResult.width;
-      GRID_HEIGHT = tilemapResult.height;
-      return tilemapResult.layout;
-    } else {
-      console.error(`❌ Failed to load tilemap: ${mapData}, falling back to default`);
-      // Fallback to default small map
-      GRID_WIDTH = 12;
-      GRID_HEIGHT = 8;
-      return createDefaultMap();
-    }
-  } else if (Array.isArray(mapData)) {
-    // It's a hardcoded array
-    GRID_WIDTH = mapData[0].length;
-    GRID_HEIGHT = mapData.length;
-    return mapData;
+  // Load the tilemap file
+  const tilemapResult = loadTilemapFromFile(levelData.mapFile);
+  if (tilemapResult) {
+    // Update grid dimensions
+    GRID_WIDTH = tilemapResult.width;
+    GRID_HEIGHT = tilemapResult.height;
+    return tilemapResult.layout;
   } else {
-    console.error(`❌ Invalid map data type: ${typeof mapData}`);
+    console.error(`❌ Failed to load tilemap: ${levelData.mapFile}, falling back to default`);
+    // Fallback to default small map
     GRID_WIDTH = 12;
     GRID_HEIGHT = 8;
     return createDefaultMap();
@@ -286,14 +365,86 @@ function createDefaultMap() {
   ];
 }
 
-// Helper function to select a random map from current level
-function selectRandomMapForLevel() {
-  const levelMaps = MAP_POOL[currentLevel];
-  currentMapIndex = Math.floor(Math.random() * levelMaps.length);
-  console.log(
-    `Selected random map: Level ${currentLevel}, Map ${currentMapIndex + 1}/${levelMaps.length}`
-  );
-  return getCurrentMap();
+// Function to load a new map (for level progression)
+function loadNewMap(level = null) {
+  // Set level (default to current or level1)
+  if (level) {
+    currentLevel = level;
+  }
+
+  const levelData = LEVELS[currentLevel];
+  if (!levelData) {
+    console.error(`❌ Level ${currentLevel} not found in LEVELS configuration`);
+    return;
+  }
+
+  // Load the map (this updates GRID_WIDTH and GRID_HEIGHT)
+  const newDungeonLayout = getCurrentMap();
+
+  // Update game state with new map and dimensions
+  gameState.dungeonLayout = newDungeonLayout;
+  gameState.gridWidth = GRID_WIDTH;
+  gameState.gridHeight = GRID_HEIGHT;
+  gameState.currentLevel = currentLevel;
+
+  // Initialize level-specific game objects
+  if (levelData.gameObjects) {
+    // Deep copy game objects to avoid reference issues
+
+    // Level 1 objects
+    if (levelData.gameObjects.key) {
+      gameState.key = { ...levelData.gameObjects.key };
+    }
+    if (levelData.gameObjects.fires) {
+      gameState.fires = levelData.gameObjects.fires.map(fire => ({ ...fire }));
+    }
+    if (levelData.gameObjects.door) {
+      gameState.door = { ...levelData.gameObjects.door };
+    }
+
+    // Level 2 objects
+    if (levelData.gameObjects.pressurePlate) {
+      gameState.pressurePlate = { ...levelData.gameObjects.pressurePlate };
+    }
+    if (levelData.gameObjects.trapDoor) {
+      gameState.trapDoor = { ...levelData.gameObjects.trapDoor };
+    }
+    if (levelData.gameObjects.slimes) {
+      gameState.slimes = levelData.gameObjects.slimes.map(slime => ({ ...slime }));
+    }
+  }
+
+  // Update starting positions for the new map
+  updateStartingPositionsForMap(newDungeonLayout);
+
+  // Ensure starting positions are safe
+  ensureSafeStartingPositions();
+
+  console.log(`🗺️  Loaded map: ${levelData.name} (${GRID_WIDTH}x${GRID_HEIGHT})`);
+}
+
+// Function to ensure starting positions are safe (no hazards)
+function ensureSafeStartingPositions() {
+  console.log('Validating starting positions...');
+
+  for (const [playerId, pos] of Object.entries(startingPositions)) {
+    const currentTile = gameState.dungeonLayout[pos.y][pos.x];
+
+    if (currentTile !== TILE_TYPES.FLOOR) {
+      const tileTypeName = Object.keys(TILE_TYPES).find(key => TILE_TYPES[key] === currentTile);
+      console.log(
+        `WARNING: ${playerId} starting position (${pos.x}, ${pos.y}) has ${tileTypeName}, converting to FLOOR`
+      );
+
+      // Convert hazard/wall to safe floor tile
+      gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
+      console.log(`✅ ${playerId} starting position is now safe`);
+    } else {
+      console.log(`✅ ${playerId} starting position (${pos.x}, ${pos.y}) is already safe`);
+    }
+  }
+
+  console.log('Starting position validation complete');
 }
 
 // Initialize game state (will be properly set by loadNewMap)
@@ -308,23 +459,15 @@ const gameState = {
   playerItems: {}, // Tracks current items for each player: { player1: 'Douse Fire', player2: 'Build Bridge' }
   gameWon: false, // Tracks if the game has been won (both players reached exit)
   currentLevel: currentLevel, // Current difficulty level
-  mapIndex: currentMapIndex, // Current map within the level
   levelProgression: 1, // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
-  // Level 1 cooperative puzzle objects
-  key: {
-    x: 1,
-    y: 2, // Moved down one tile to floor
-    heldBy: null, // Track which player ID has the key
-  },
-  fires: [
-    { x: 2, y: 2, isDoused: false }, // Fire guarding the key (moved to floor)
-    { x: 6, y: 5, isDoused: false }, // Fire blocking the central path
-  ],
-  door: {
-    x: 9,
-    y: 2,
-    isUnlocked: false,
-  },
+  // Level-specific objects will be initialized by loadNewMap
+  key: null,
+  fires: null,
+  door: null,
+  // Future Level 2 objects
+  pressurePlate: null,
+  trapDoor: null,
+  slimes: null,
 };
 
 // Player starting positions (will be updated based on map size)
@@ -335,12 +478,11 @@ let startingPositions = {
 
 // Function to find safe starting positions in the map
 function findSafeStartingPositions(dungeonLayout) {
-  // For Level 1 cooperative puzzle, use specific spawn positions
-  if (currentLevel === 'level1') {
-    return {
-      player1: { x: 1, y: 6 }, // Player 1 (Soldier): bottom-left (valid floor tile)
-      player2: { x: 10, y: 2 }, // Player 2 (Orc): top-right
-    };
+  const levelData = LEVELS[currentLevel];
+  const levelStartingPositions = levelData.startingPositions;
+
+  if (levelStartingPositions) {
+    return levelStartingPositions;
   }
 
   const safePositions = [];
@@ -384,86 +526,6 @@ function updateStartingPositionsForMap(dungeonLayout) {
     `🎯 Updated starting positions: Player1(${newPositions.player1.x},${newPositions.player1.y}), Player2(${newPositions.player2.x},${newPositions.player2.y})`
   );
 }
-
-// Function to load a new map (for testing and level progression)
-function loadNewMap(level = null, mapIndex = null) {
-  // Set level (default to current or level1)
-  if (level) {
-    currentLevel = level;
-  }
-
-  // Set map index (default to random)
-  if (mapIndex !== null) {
-    currentMapIndex = mapIndex;
-  } else {
-    // Select random map from the level
-    const levelMaps = MAP_POOL[currentLevel];
-    currentMapIndex = Math.floor(Math.random() * levelMaps.length);
-  }
-
-  // Load the map (this updates GRID_WIDTH and GRID_HEIGHT)
-  const newDungeonLayout = getCurrentMap();
-
-  // Update game state with new map and dimensions
-  gameState.dungeonLayout = newDungeonLayout;
-  gameState.gridWidth = GRID_WIDTH;
-  gameState.gridHeight = GRID_HEIGHT;
-  gameState.currentLevel = currentLevel;
-  gameState.mapIndex = currentMapIndex;
-
-  // Update starting positions for the new map size
-  updateStartingPositionsForMap(newDungeonLayout);
-
-  // Ensure starting positions are safe (this may override the automatic detection if needed)
-  ensureSafeStartingPositions();
-
-  console.log(
-    `🗺️  Loaded new map: ${currentLevel} - Layout ${currentMapIndex + 1}/${MAP_POOL[currentLevel].length} (${GRID_WIDTH}x${GRID_HEIGHT})`
-  );
-}
-
-// Function to ensure starting positions are safe (no hazards)
-function ensureSafeStartingPositions() {
-  console.log('Validating starting positions...');
-
-  for (const [playerId, pos] of Object.entries(startingPositions)) {
-    const currentTile = gameState.dungeonLayout[pos.y][pos.x];
-
-    if (currentTile !== TILE_TYPES.FLOOR) {
-      const tileTypeName = Object.keys(TILE_TYPES).find(key => TILE_TYPES[key] === currentTile);
-      console.log(
-        `WARNING: ${playerId} starting position (${pos.x}, ${pos.y}) has ${tileTypeName}, converting to FLOOR`
-      );
-
-      // Convert hazard/wall to safe floor tile
-      gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
-      console.log(`✅ ${playerId} starting position is now safe`);
-    } else {
-      console.log(`✅ ${playerId} starting position (${pos.x}, ${pos.y}) is already safe`);
-    }
-  }
-
-  console.log('Starting position validation complete');
-}
-
-// Initialize with Level 1 tilemap on server startup
-console.log('🎮 Initializing server with tilemap system...');
-loadNewMap('level1', 0); // Load first map from level1 (the tilemap)
-
-// Console commands for testing different maps
-console.log('\n🎮 TESTING COMMANDS:');
-console.log('📝 Available maps:');
-console.log('   Level 1: 3 layouts (easier puzzles)');
-console.log('   Level 2: 2 layouts (harder puzzles)');
-console.log('💡 To test different maps during development:');
-console.log('   - Modify loadNewMap() call above to change initial map');
-console.log(
-  '   - Examples: loadNewMap("level1", 0), loadNewMap("level1", 1), loadNewMap("level1", 2), loadNewMap("level2", 0), loadNewMap("level2", 1)'
-);
-console.log(
-  '   - Use loadNewMap("level1") for random Level 1 map, loadNewMap("level2") for random Level 2 map'
-);
-console.log('');
 
 // Helper function to find an available player slot
 function findAvailablePlayerSlot() {
@@ -577,7 +639,7 @@ function checkDoorWinCondition() {
     // Advance to next level after a brief delay
     setTimeout(() => {
       advanceToNextLevel();
-    }, 2000);
+    }, LEVEL_TRANSITION_DELAY_MS);
 
     // Broadcast victory state
     broadcastCustomizedGameState();
@@ -589,10 +651,12 @@ function checkDoorWinCondition() {
 
 // Helper function to assign random items to players
 function assignRandomItems() {
-  // For Level 1 cooperative puzzle, both players get "Douse Fire" items
-  if (currentLevel === 'level1') {
-    gameState.playerItems.player1 = ITEM_TYPES.DOUSE_FIRE;
-    gameState.playerItems.player2 = ITEM_TYPES.DOUSE_FIRE;
+  const levelData = LEVELS[currentLevel];
+  const playerItems = levelData.playerItems;
+
+  if (playerItems) {
+    gameState.playerItems.player1 = playerItems.player1;
+    gameState.playerItems.player2 = playerItems.player2;
   } else {
     // For other levels, assign random items
     const itemTypes = Object.values(ITEM_TYPES);
@@ -647,7 +711,7 @@ function advanceToNextLevel() {
 
   // After transition delay, load the new level
   setTimeout(() => {
-    // Load random map from next level
+    // Load the next level
     loadNewMap(nextLevel);
 
     // Reset game state for new level
@@ -679,34 +743,43 @@ function advanceToNextLevel() {
 
 // Helper function to check if both players are on exit tiles (win condition)
 function checkWinCondition() {
-  if (gameState.gameWon || !gameState.gameStarted) {
-    return false; // Already won or game not started
-  }
+  const levelData = LEVELS[currentLevel];
+  const winCondition = levelData.winCondition;
 
-  const player1 = gameState.players.player1;
-  const player2 = gameState.players.player2;
+  if (winCondition === 'door') {
+    // Level 1 uses door-based win condition
+    return checkDoorWinCondition();
+  } else if (winCondition === 'exit') {
+    // Other levels use exit tile win condition
+    if (gameState.gameWon || !gameState.gameStarted) {
+      return false; // Already won or game not started
+    }
 
-  if (!player1 || !player2) {
-    return false; // Both players must be connected
-  }
+    const player1 = gameState.players.player1;
+    const player2 = gameState.players.player2;
 
-  // Check if both players are on exit tiles
-  const player1OnExit = gameState.dungeonLayout[player1.y][player1.x] === TILE_TYPES.EXIT;
-  const player2OnExit = gameState.dungeonLayout[player2.y][player2.x] === TILE_TYPES.EXIT;
+    if (!player1 || !player2) {
+      return false; // Both players must be connected
+    }
 
-  if (player1OnExit && player2OnExit) {
-    gameState.gameWon = true;
-    gameState.victoryTime = new Date().toISOString();
-    console.log('🎉 VICTORY! Both players reached the exit!');
+    // Check if both players are on exit tiles
+    const player1OnExit = gameState.dungeonLayout[player1.y][player1.x] === TILE_TYPES.EXIT;
+    const player2OnExit = gameState.dungeonLayout[player2.y][player2.x] === TILE_TYPES.EXIT;
 
-    // Trigger level progression after a longer celebration period
-    setTimeout(() => {
-      advanceToNextLevel();
-      // Broadcast new level to all clients
-      broadcastCustomizedGameState();
-    }, 5000); // 5 second victory celebration before advancing
+    if (player1OnExit && player2OnExit) {
+      gameState.gameWon = true;
+      gameState.victoryTime = new Date().toISOString();
+      console.log('🎉 VICTORY! Both players reached the exit!');
 
-    return true;
+      // Trigger level progression after a longer celebration period
+      setTimeout(() => {
+        advanceToNextLevel();
+        // Broadcast new level to all clients
+        broadcastCustomizedGameState();
+      }, 5000); // 5 second victory celebration before advancing
+
+      return true;
+    }
   }
 
   return false;
@@ -737,6 +810,19 @@ function switchTurn() {
     `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
   );
 }
+
+// Initialize with Level 1 tilemap on server startup
+console.log('🎮 Initializing server with simplified map system...');
+loadNewMap('level1');
+
+// Console commands for testing
+console.log('\n🎮 TESTING COMMANDS:');
+console.log('📝 Available levels:');
+console.log('   Level 1: The Key and the Door (cooperative puzzle)');
+console.log('   Level 2: Pressure and Peril (advanced mechanics) - Coming soon');
+console.log('💡 To switch levels during development:');
+console.log('   - Use: loadNewMap("level1") or loadNewMap("level2")');
+console.log('');
 
 // Socket.io connection handling
 io.on('connection', socket => {
@@ -1167,6 +1253,29 @@ io.on('connection', socket => {
           message: 'End turn processing failed',
           error: endTurnError.message,
         });
+      }
+    });
+
+    // Test command to simulate level progression
+    socket.on('testWin', () => {
+      try {
+        console.log('🧪 Test level progression triggered by', playerId);
+        if (currentLevel === 'level1') {
+          console.log('🚀 Simulating Level 1 → Level 2 progression');
+          gameState.gameWon = true;
+          broadcastCustomizedGameState();
+          setTimeout(() => {
+            advanceToNextLevel();
+          }, LEVEL_TRANSITION_DELAY_MS);
+        } else if (currentLevel === 'level2') {
+          console.log('🚀 Simulating Level 2 → Level 1 progression (for testing)');
+          loadNewMap('level1');
+          gameState.gameWon = false;
+          gameState.gameStarted = true;
+          broadcastCustomizedGameState();
+        }
+      } catch (error) {
+        console.error(`❌ Error handling testWin:`, error);
       }
     });
   } else {
