@@ -297,7 +297,7 @@ const LEVELS = {
         },
       ],
     },
-    // Level 2 starting positions - placed on visible floor areas  
+    // Level 2 starting positions - placed on visible floor areas
     startingPositions: {
       player1: { x: 14, y: 12 }, // Safe floor area in left platform
       player2: { x: 15, y: 12 }, // Safe floor area in middle platform
@@ -684,7 +684,7 @@ function advanceToNextLevel() {
   if (currentLevel === 'level1') {
     // Completing Level 1 → advance to Level 2
     console.log('🚀 ADVANCING FROM LEVEL 1 TO LEVEL 2!');
-    
+
     // Set transition state for level change
     gameState.levelTransition = {
       isTransitioning: true,
@@ -700,7 +700,7 @@ function advanceToNextLevel() {
     // After transition delay, load Level 2
     setTimeout(() => {
       loadNewMap('level2');
-      
+
       // Reset game state for new level
       gameState.gameWon = false;
       gameState.gameStarted = true; // Both players still connected
@@ -727,7 +727,6 @@ function advanceToNextLevel() {
       // Broadcast final new level state
       broadcastCustomizedGameState();
     }, 3000); // 3 second transition screen
-
   } else if (currentLevel === 'level2') {
     // Completing Level 2 → Game Complete!
     console.log('🏆 GAME COMPLETED! Both levels mastered!');
@@ -1274,34 +1273,37 @@ io.on('connection', socket => {
     socket.on('resetPositions', () => {
       try {
         console.log('🔄 Reset positions triggered by', playerId);
-        
+
         // Update starting positions for current level
         updateStartingPositionsForMap(gameState.dungeonLayout);
-        
+
         // Reset all connected players to starting positions
         if (gameState.players.player1) {
           gameState.players.player1.x = startingPositions.player1.x;
           gameState.players.player1.y = startingPositions.player1.y;
-          console.log(`Reset player1 to (${startingPositions.player1.x}, ${startingPositions.player1.y})`);
+          console.log(
+            `Reset player1 to (${startingPositions.player1.x}, ${startingPositions.player1.y})`
+          );
         }
         if (gameState.players.player2) {
           gameState.players.player2.x = startingPositions.player2.x;
           gameState.players.player2.y = startingPositions.player2.y;
-          console.log(`Reset player2 to (${startingPositions.player2.x}, ${startingPositions.player2.y})`);
+          console.log(
+            `Reset player2 to (${startingPositions.player2.x}, ${startingPositions.player2.y})`
+          );
         }
-        
+
         // Ensure positions are safe
         ensureSafeStartingPositions();
-        
+
         // Broadcast updated positions
         broadcastCustomizedGameState();
-        
+
         console.log('✅ Player positions reset successfully');
       } catch (error) {
         console.error(`❌ Error resetting positions:`, error);
       }
     });
-
   } else {
     // No available slots - reject connection
     console.log(`Connection rejected for ${socket.id}: Game is full`);
