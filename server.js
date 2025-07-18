@@ -733,7 +733,9 @@ function startGame() {
 function switchTurn() {
   gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
   gameState.actionsRemaining = 2; // Reset actions to 2 for the new turn
-  console.log(`Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`);
+  console.log(
+    `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
+  );
 }
 
 // Socket.io connection handling
@@ -914,7 +916,9 @@ io.on('connection', socket => {
         if (itemUsed) {
           // Decrement actions remaining after successful item use
           gameState.actionsRemaining--;
-          console.log(`${playerId} used 1 action (item), ${gameState.actionsRemaining} actions remaining`);
+          console.log(
+            `${playerId} used 1 action (item), ${gameState.actionsRemaining} actions remaining`
+          );
 
           // Auto-switch turns if no actions remaining
           if (gameState.actionsRemaining <= 0) {
@@ -1104,7 +1108,7 @@ io.on('connection', socket => {
           // Decrement actions remaining after valid move
           gameState.actionsRemaining--;
           console.log(`${playerId} used 1 action, ${gameState.actionsRemaining} actions remaining`);
-          
+
           // Auto-switch turns if no actions remaining
           if (gameState.actionsRemaining <= 0) {
             switchTurn();
@@ -1140,13 +1144,17 @@ io.on('connection', socket => {
         }
 
         if (gameState.currentPlayerTurn !== playerId) {
-          console.log(`End turn rejected: Not ${playerId}'s turn (current: ${gameState.currentPlayerTurn})`);
+          console.log(
+            `End turn rejected: Not ${playerId}'s turn (current: ${gameState.currentPlayerTurn})`
+          );
           return;
         }
 
         // Player is ending their turn early
-        console.log(`${playerId} ended their turn early (had ${gameState.actionsRemaining} actions remaining)`);
-        
+        console.log(
+          `${playerId} ended their turn early (had ${gameState.actionsRemaining} actions remaining)`
+        );
+
         // Switch turns immediately
         switchTurn();
 
