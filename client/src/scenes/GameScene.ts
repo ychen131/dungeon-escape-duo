@@ -52,6 +52,7 @@ export class GameScene extends Phaser.Scene {
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
+    private tilemapLayers: Phaser.Tilemaps.TilemapLayer[] = []; // Track active tilemap layers
 
     constructor() {
         super({ key: 'GameScene' });
@@ -60,9 +61,10 @@ export class GameScene extends Phaser.Scene {
     preload() {
         console.log('🎮 Loading game assets...');
         
-        // Load tileset and tilemap
+        // Load tileset and tilemaps
         this.load.image('tiles', 'Full.png');
         this.load.tilemapTiledJSON('level1', 'level1.tmj');
+        this.load.tilemapTiledJSON('level2', 'level2.tmj');
         
         // Load player character sprite sheets
         console.log('🏃 Loading character sprite sheets...');
@@ -135,12 +137,33 @@ export class GameScene extends Phaser.Scene {
         const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
         this.socket = (window as any).io(serverUrl);
         
+        // Expose socket globally for testing
+        (window as any).socket = this.socket;
+        console.log('🧪 Exposed socket to window for testing');
+        console.log('🧪 Use: socket.emit("testWin") to test level progression');
+        
         // Set up socket event listeners
         this.setupSocketListeners();
     }
 
-    private renderTilemap() {
+    private destroyCurrentTilemap() {
+        // Destroy all existing tilemap layers
+        this.tilemapLayers.forEach(layer => {
+            if (layer && layer.destroy) {
+                layer.destroy();
+            }
+        });
+        this.tilemapLayers = [];
+        console.log('🧹 Destroyed existing tilemap layers');
+    }
+
+    private renderTilemap(level: string = 'level1') {
         try {
+            console.log(`🎯 Rendering tilemap for ${level}`);
+            
+            // Destroy existing tilemap layers first
+            this.destroyCurrentTilemap();
+            
             // Check if tileset image loaded
             if (!this.textures.exists('tiles')) {
                 console.warn('⚠️  Tileset image "tiles" not loaded, using fallback mode');
@@ -148,9 +171,9 @@ export class GameScene extends Phaser.Scene {
             }
             
             // Try to create tilemap from loaded data
-            const map = this.make.tilemap({ key: 'level1' });
+            const map = this.make.tilemap({ key: level });
             if (!map) {
-                console.warn('⚠️  Failed to create tilemap');
+                console.warn(`⚠️  Failed to create tilemap for ${level}`);
                 return false;
             }
             
@@ -184,13 +207,15 @@ export class GameScene extends Phaser.Scene {
                     // Scale the layer to make tiles bigger (32x32 -> 50x50)
                     const scale = tileSize / 32; // Scale factor from tileset to desired tile size
                     layer.setScale(scale);
+                    layer.setDepth(0); // Set depth to ensure proper layering
+                    this.tilemapLayers.push(layer); // Track this layer for cleanup
                     console.log(`✅ Layer '${layerData.name}' created successfully at offset (${offsetX}, ${offsetY})`);
                 } else {
                     console.warn(`⚠️  Failed to create layer: ${layerData.name}`);
                 }
             });
             
-            console.log('✅ Tilemap rendering complete');
+            console.log(`✅ Tilemap rendering complete for ${level}: ${this.tilemapLayers.length} layers created`);
             return true;
             
         } catch (error) {
@@ -326,11 +351,20 @@ export class GameScene extends Phaser.Scene {
                 return;
             }
             
+            // Check if level changed - re-render tilemap if needed
+            const levelChanged = this.serverGameState?.currentLevel !== newGameState.currentLevel;
+            
             this.serverGameState = newGameState;
         
             if (newGameState.yourPlayerId) {
                 this.myPlayerId = newGameState.yourPlayerId;
                 console.log('Assigned as:', this.myPlayerId);
+            }
+            
+            // Re-render tilemap if level changed
+            if (levelChanged && newGameState.currentLevel) {
+                console.log(`🔄 Level changed to ${newGameState.currentLevel}, re-rendering tilemap`);
+                this.renderTilemap(newGameState.currentLevel);
             }
             
             this.updateGameStatus();

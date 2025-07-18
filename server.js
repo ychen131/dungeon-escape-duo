@@ -55,6 +55,8 @@ const TILEMAP_TO_LOGIC = {
   // Chasms/water (barrel/pot tiles) - from Layer 2
   41: 3,
   42: 3, // Barrel/pot tiles that represent chasms
+  // Pressure plate (Level 2 specific)
+  28: 0, // Pressure plate renders as floor but has special behavior
   // Floor tiles that were mistakenly identified as chasms
   43: 0,
   44: 0, // These are actually floor tiles, not chasms
@@ -93,19 +95,48 @@ function parseTilemapToGameLogic(tilemapData) {
 
     // Process each layer (later layers override earlier ones, but only if they have content)
     for (const layer of tilemapData.layers) {
-      if (layer.type === 'tilelayer' && layer.data) {
-        for (let i = 0; i < layer.data.length; i++) {
-          const tileId = layer.data[i];
-          const x = i % mapWidth;
-          const y = Math.floor(i / mapWidth);
+      if (layer.type === 'tilelayer') {
+        // Handle both flat data arrays and chunked data
+        if (layer.data) {
+          // Flat data array format (level1)
+          for (let i = 0; i < layer.data.length; i++) {
+            const tileId = layer.data[i];
+            const x = i % mapWidth;
+            const y = Math.floor(i / mapWidth);
 
-          if (y < mapHeight && x < mapWidth) {
-            if (tileId > 0) {
-              // Non-empty tile - use it (override any previous layer)
-              const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
-              fullLayout[y][x] = logicType;
+            if (y < mapHeight && x < mapWidth) {
+              if (tileId > 0) {
+                // Non-empty tile - use it (override any previous layer)
+                const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
+                fullLayout[y][x] = logicType;
+              }
+              // If tileId is 0 (empty), leave whatever was on lower layers
             }
-            // If tileId is 0 (empty), leave whatever was on lower layers
+          }
+        } else if (layer.chunks) {
+          // Chunked data format (level2)
+          for (const chunk of layer.chunks) {
+            const chunkX = chunk.x;
+            const chunkY = chunk.y;
+            const chunkWidth = chunk.width;
+            const chunkHeight = chunk.height;
+            
+            for (let i = 0; i < chunk.data.length; i++) {
+              const tileId = chunk.data[i];
+              const localX = i % chunkWidth;
+              const localY = Math.floor(i / chunkWidth);
+              const x = chunkX + localX;
+              const y = chunkY + localY;
+
+              if (y < mapHeight && x < mapWidth) {
+                if (tileId > 0) {
+                  // Non-empty tile - use it (override any previous layer)
+                  const logicType = TILEMAP_TO_LOGIC[tileId] || 0;
+                  fullLayout[y][x] = logicType;
+                }
+                // If tileId is 0 (empty), leave whatever was on lower layers
+              }
+            }
           }
         }
       }
@@ -225,36 +256,45 @@ const LEVELS = {
     },
   },
   level2: {
-    mapFile: 'client/public/assets/level2.tmj', // Will be created from level2.png
+    mapFile: 'client/public/assets/level2.tmj',
     name: 'Level 2: Pressure and Peril',
-    // Level 2 specific game objects (to be implemented)
+    // Level 2 specific game objects based on analyzing level2.tmj
     gameObjects: {
+      // Based on analyzing the tmj file, identifying key positions
+      fires: [
+        { x: 9, y: 8, isDoused: false }, // Fire tile (ID 7) from Layer 3
+        { x: 13, y: 9, isDoused: false }, // Another fire tile from Layer 3
+        { x: 15, y: 11, isDoused: false }, // Third fire tile from Layer 3
+      ],
       pressurePlate: {
-        x: 4,
-        y: 3,
+        x: 7, y: 4, // Pressure plate tile (ID 28) from Layer 3
         isPressed: false,
       },
       trapDoor: {
-        x: 7,
-        y: 4,
+        x: 12, y: 9, // Trap door area from analyzing the layout
         isOpen: false, // Closed by default, opens when pressure plate is pressed
       },
       slimes: [
         {
-          x: 9,
-          y: 5,
+          x: 6, y: 4, // Slime position based on the map analysis
           isStunned: false,
           stunDuration: 0,
         },
       ],
-      // No key/door in Level 2
+      // Exit tile should be detected from tile ID 4 in the parsed map
     },
-    // Level 2 will use automatic starting position detection
-    startingPositions: null, // Will be determined by findSafeStartingPositions
+    // Level 2 starting positions - placed in safe floor areas
+    startingPositions: {
+      player1: { x: 5, y: 6 }, // Safe starting position in the left section
+      player2: { x: 17, y: 5 }, // Safe starting position in the right section
+    },
     // Level 2 uses exit tile win condition
     winCondition: 'exit',
-    // Random items for Level 2
-    playerItems: null, // Will be assigned randomly
+    // Different items for Level 2 - both players get different tools
+    playerItems: {
+      player1: 'Douse Fire',
+      player2: 'Build Bridge',
+    },
   },
 };
 
@@ -345,6 +385,8 @@ function loadNewMap(level = null) {
   // Initialize level-specific game objects
   if (levelData.gameObjects) {
     // Deep copy game objects to avoid reference issues
+    
+    // Level 1 objects
     if (levelData.gameObjects.key) {
       gameState.key = { ...levelData.gameObjects.key };
     }
@@ -354,7 +396,17 @@ function loadNewMap(level = null) {
     if (levelData.gameObjects.door) {
       gameState.door = { ...levelData.gameObjects.door };
     }
-    // TODO: Add Level 2 objects (pressurePlate, trapDoor, slimes) when implementing Level 2
+    
+    // Level 2 objects
+    if (levelData.gameObjects.pressurePlate) {
+      gameState.pressurePlate = { ...levelData.gameObjects.pressurePlate };
+    }
+    if (levelData.gameObjects.trapDoor) {
+      gameState.trapDoor = { ...levelData.gameObjects.trapDoor };
+    }
+    if (levelData.gameObjects.slimes) {
+      gameState.slimes = levelData.gameObjects.slimes.map(slime => ({ ...slime }));
+    }
   }
 
   // Update starting positions for the new map
@@ -1198,6 +1250,29 @@ io.on('connection', socket => {
           message: 'End turn processing failed',
           error: endTurnError.message,
         });
+      }
+    });
+
+    // Test command to simulate level progression
+    socket.on('testWin', () => {
+      try {
+        console.log('🧪 Test level progression triggered by', playerId);
+        if (currentLevel === 'level1') {
+          console.log('🚀 Simulating Level 1 → Level 2 progression');
+          gameState.gameWon = true;
+          broadcastCustomizedGameState();
+          setTimeout(() => {
+            advanceToNextLevel();
+          }, 2000);
+        } else if (currentLevel === 'level2') {
+          console.log('🚀 Simulating Level 2 → Level 1 progression (for testing)');
+          loadNewMap('level1');
+          gameState.gameWon = false;
+          gameState.gameStarted = true;
+          broadcastCustomizedGameState();
+        }
+      } catch (error) {
+        console.error(`❌ Error handling testWin:`, error);
       }
     });
   } else {
