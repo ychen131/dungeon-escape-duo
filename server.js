@@ -262,6 +262,17 @@ const LEVELS = {
     name: 'Level 2: Pressure and Peril',
     // Level 2 specific game objects based on analyzing level2.tmj
     gameObjects: {
+      // Key and door for Level 2 - same mechanics as Level 1
+      key: {
+        x: 20,
+        y: 5, // Place key at a strategic location
+        heldBy: null, // Track which player ID has the key
+      },
+      door: {
+        x: 7,
+        y: 5, // Door at requested position
+        isUnlocked: false,
+      },
       // Based on analyzing the tmj file, identifying key positions
       fires: [
         { x: 6, y: 6, isDoused: false }, // Fire tile (ID 7) from Layer 3
@@ -285,15 +296,14 @@ const LEVELS = {
           stunDuration: 0,
         },
       ],
-      // Exit tile should be detected from tile ID 4 in the parsed map
     },
     // Level 2 starting positions - placed on visible floor areas  
     startingPositions: {
       player1: { x: 14, y: 12 }, // Safe floor area in left platform
       player2: { x: 15, y: 12 }, // Safe floor area in middle platform
     },
-    // Level 2 uses exit tile win condition
-    winCondition: 'exit',
+    // Level 2 uses door-based win condition (same as Level 1)
+    winCondition: 'door',
     // Different items for Level 2 - both players get different tools
     playerItems: {
       player1: 'Douse Fire',
@@ -816,7 +826,7 @@ function switchTurn() {
 
 // Initialize with Level 1 tilemap on server startup
 console.log('🎮 Initializing server with simplified map system...');
-loadNewMap('level2');
+loadNewMap('level2'); // TODO: Change to level1 after level 2 testing
 
 // Console commands for testing
 console.log('\n🎮 TESTING COMMANDS:');
@@ -1185,8 +1195,9 @@ io.on('connection', socket => {
 
         // Check for win condition after the move - use appropriate win condition for level
         let gameWon = false;
-        if (currentLevel === 'level1') {
-          // Level 1 uses door-based win condition
+        const levelData = LEVELS[currentLevel];
+        if (levelData && levelData.winCondition === 'door') {
+          // Levels using door-based win condition
           gameWon = checkDoorWinCondition();
         } else {
           // Other levels use exit tile win condition
