@@ -20,7 +20,10 @@ interface GameState {
     mapIndex?: number;
     levelTransition?: {
         isTransitioning: boolean;
-        toLevel: number;
+        fromLevel: string;
+        toLevel: string;
+        transitionStartTime: number;
+        message?: string;
     };
     disconnectedPlayer?: {
         playerId: string;
@@ -143,9 +146,10 @@ export class GameScene extends Phaser.Scene {
         this.socket = (window as any).io(serverUrl);
         
         // Expose socket globally for testing
-        (window as any).socket = this.socket;
-        console.log('🧪 Exposed socket to window for testing');
-        console.log('🧪 Use: socket.emit("testWin") to test level progression');
+                  (window as any).socket = this.socket;
+          console.log('🧪 Exposed socket to window for testing');
+          console.log('🔄 Use: socket.emit("resetPositions") to reset player positions');
+                  
         
         // Set up socket event listeners
         this.setupSocketListeners();
@@ -433,10 +437,20 @@ export class GameScene extends Phaser.Scene {
         
         // Check for level transition first
         if (this.serverGameState.levelTransition?.isTransitioning) {
-            const toLevel = this.serverGameState.levelTransition.toLevel;
-            this.updateStatus(`🚀 ENTERING LEVEL ${toLevel} 🚀`, '#3498db', '24px', 'bold');
-            this.updateItemDisplay(`🎯 Prepare for greater challenges! New puzzles await... 🎯`, '#9b59b6');
-            this.setVictoryBackground('linear-gradient(45deg, #3498db, #9b59b6, #3498db)');
+            const transition = this.serverGameState.levelTransition;
+            const message = transition.message || `🚀 ENTERING LEVEL ${transition.toLevel} 🚀`;
+            
+            if (transition.toLevel === 'complete') {
+                // Final game completion transition
+                this.updateStatus('🏆 GAME COMPLETE! 🏆', '#ff6b35', '28px', 'bold');
+                this.updateItemDisplay(message, '#d35400');
+                this.setVictoryBackground('linear-gradient(45deg, #e74c3c, #f39c12, #e67e22, #e74c3c)');
+            } else {
+                // Level progression transition
+                this.updateStatus(message, '#3498db', '24px', 'bold');
+                this.updateItemDisplay(`🎯 Loading new level... Get ready for new challenges! 🎯`, '#9b59b6');
+                this.setVictoryBackground('linear-gradient(45deg, #3498db, #9b59b6, #3498db)');
+            }
         }
         // Check for final game completion
         else if (this.serverGameState.gameCompleted) {

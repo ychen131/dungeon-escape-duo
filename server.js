@@ -288,10 +288,10 @@ const LEVELS = {
       ],
       // Exit tile should be detected from tile ID 4 in the parsed map
     },
-    // Level 2 starting positions - placed in safe floor areas
+    // Level 2 starting positions - placed on visible floor areas  
     startingPositions: {
-      player1: { x: 5, y: 6 }, // Safe starting position in the left section
-      player2: { x: 17, y: 5 }, // Safe starting position in the right section
+      player1: { x: 14, y: 12 }, // Safe floor area in left platform
+      player2: { x: 15, y: 12 }, // Safe floor area in middle platform
     },
     // Level 2 uses exit tile win condition
     winCondition: 'exit',
@@ -671,74 +671,78 @@ function assignRandomItems() {
 
 // Helper function to advance to next level after victory
 function advanceToNextLevel() {
-  // Check if we've completed Level 2 - if so, end the game entirely
-  if (gameState.levelProgression === 2) {
+  // Determine what level we're currently on and what's next
+  if (currentLevel === 'level1') {
+    // Completing Level 1 → advance to Level 2
+    console.log('🚀 ADVANCING FROM LEVEL 1 TO LEVEL 2!');
+    
+    // Set transition state for level change
+    gameState.levelTransition = {
+      isTransitioning: true,
+      fromLevel: 'level1',
+      toLevel: 'level2',
+      transitionStartTime: Date.now(),
+      message: 'Level 1 Complete! Advancing to Level 2...',
+    };
+
+    // Broadcast transition state first
+    broadcastCustomizedGameState();
+
+    // After transition delay, load Level 2
+    setTimeout(() => {
+      loadNewMap('level2');
+      
+      // Reset game state for new level
+      gameState.gameWon = false;
+      gameState.gameStarted = true; // Both players still connected
+      gameState.currentPlayerTurn = 'player1'; // Player 1 starts new level
+      gameState.actionsRemaining = 2; // Reset actions for new level
+      gameState.levelProgression = 2; // Update progression tracker
+      gameState.levelTransition = null; // Clear transition state
+
+      // Reset player positions to Level 2 starting positions
+      if (gameState.players.player1) {
+        gameState.players.player1.x = startingPositions.player1.x;
+        gameState.players.player1.y = startingPositions.player1.y;
+      }
+      if (gameState.players.player2) {
+        gameState.players.player2.x = startingPositions.player2.x;
+        gameState.players.player2.y = startingPositions.player2.y;
+      }
+
+      // Assign new items for the new level
+      assignRandomItems();
+
+      console.log(`✨ Level 2 ready! Players reset to starting positions.`);
+
+      // Broadcast final new level state
+      broadcastCustomizedGameState();
+    }, 3000); // 3 second transition screen
+
+  } else if (currentLevel === 'level2') {
+    // Completing Level 2 → Game Complete!
     console.log('🏆 GAME COMPLETED! Both levels mastered!');
 
     // Set final victory state
     gameState.gameCompleted = true;
     gameState.finalVictoryTime = new Date().toISOString();
+    gameState.levelTransition = {
+      isTransitioning: true,
+      fromLevel: 'level2',
+      toLevel: 'complete',
+      transitionStartTime: Date.now(),
+      message: 'Congratulations! You have completed Dungeon Escape Duo!',
+    };
 
     // Broadcast final victory state
     broadcastCustomizedGameState();
 
-    return; // End the game here - no more levels
+    // Clear the transition after a longer celebration
+    setTimeout(() => {
+      gameState.levelTransition = null;
+      broadcastCustomizedGameState();
+    }, 5000); // 5 second final celebration
   }
-
-  // Increment level progression (only from 1 to 2)
-  gameState.levelProgression++;
-
-  // Determine next level string based on progression
-  let nextLevel;
-  if (gameState.levelProgression <= 1) {
-    nextLevel = 'level1';
-  } else if (gameState.levelProgression === 2) {
-    nextLevel = 'level2';
-  }
-
-  console.log(`🚀 ADVANCING TO LEVEL ${gameState.levelProgression}!`);
-
-  // Set transition state for level change
-  gameState.levelTransition = {
-    isTransitioning: true,
-    fromLevel: gameState.levelProgression - 1,
-    toLevel: gameState.levelProgression,
-    transitionStartTime: Date.now(),
-  };
-
-  // Broadcast transition state first
-  broadcastCustomizedGameState();
-
-  // After transition delay, load the new level
-  setTimeout(() => {
-    // Load the next level
-    loadNewMap(nextLevel);
-
-    // Reset game state for new level
-    gameState.gameWon = false;
-    gameState.gameStarted = true; // Both players still connected
-    gameState.currentPlayerTurn = 'player1'; // Player 1 starts new level
-    gameState.actionsRemaining = 2; // Reset actions for new level
-    gameState.levelTransition = null; // Clear transition state
-
-    // Reset player positions to starting positions
-    if (gameState.players.player1) {
-      gameState.players.player1.x = startingPositions.player1.x;
-      gameState.players.player1.y = startingPositions.player1.y;
-    }
-    if (gameState.players.player2) {
-      gameState.players.player2.x = startingPositions.player2.x;
-      gameState.players.player2.y = startingPositions.player2.y;
-    }
-
-    // Assign new items for the new level
-    assignRandomItems();
-
-    console.log(`✨ New level ready! Players reset to starting positions.`);
-
-    // Broadcast final new level state
-    broadcastCustomizedGameState();
-  }, 3000); // 3 second transition screen
 }
 
 // Helper function to check if both players are on exit tiles (win condition)
@@ -813,7 +817,7 @@ function switchTurn() {
 
 // Initialize with Level 1 tilemap on server startup
 console.log('🎮 Initializing server with simplified map system...');
-loadNewMap('level1');
+loadNewMap('level2');
 
 // Console commands for testing
 console.log('\n🎮 TESTING COMMANDS:');
@@ -1256,28 +1260,38 @@ io.on('connection', socket => {
       }
     });
 
-    // Test command to simulate level progression
-    socket.on('testWin', () => {
+    // Temporary command to reset player positions (for testing)
+    socket.on('resetPositions', () => {
       try {
-        console.log('🧪 Test level progression triggered by', playerId);
-        if (currentLevel === 'level1') {
-          console.log('🚀 Simulating Level 1 → Level 2 progression');
-          gameState.gameWon = true;
-          broadcastCustomizedGameState();
-          setTimeout(() => {
-            advanceToNextLevel();
-          }, LEVEL_TRANSITION_DELAY_MS);
-        } else if (currentLevel === 'level2') {
-          console.log('🚀 Simulating Level 2 → Level 1 progression (for testing)');
-          loadNewMap('level1');
-          gameState.gameWon = false;
-          gameState.gameStarted = true;
-          broadcastCustomizedGameState();
+        console.log('🔄 Reset positions triggered by', playerId);
+        
+        // Update starting positions for current level
+        updateStartingPositionsForMap(gameState.dungeonLayout);
+        
+        // Reset all connected players to starting positions
+        if (gameState.players.player1) {
+          gameState.players.player1.x = startingPositions.player1.x;
+          gameState.players.player1.y = startingPositions.player1.y;
+          console.log(`Reset player1 to (${startingPositions.player1.x}, ${startingPositions.player1.y})`);
         }
+        if (gameState.players.player2) {
+          gameState.players.player2.x = startingPositions.player2.x;
+          gameState.players.player2.y = startingPositions.player2.y;
+          console.log(`Reset player2 to (${startingPositions.player2.x}, ${startingPositions.player2.y})`);
+        }
+        
+        // Ensure positions are safe
+        ensureSafeStartingPositions();
+        
+        // Broadcast updated positions
+        broadcastCustomizedGameState();
+        
+        console.log('✅ Player positions reset successfully');
       } catch (error) {
-        console.error(`❌ Error handling testWin:`, error);
+        console.error(`❌ Error resetting positions:`, error);
       }
     });
+
   } else {
     // No available slots - reject connection
     console.log(`Connection rejected for ${socket.id}: Game is full`);
