@@ -564,20 +564,20 @@ function checkDoorWinCondition() {
   }
 
   // Check if both players are at the door tile
-  const bothAtDoor = players.every(player => 
-    player.x === gameState.door.x && player.y === gameState.door.y
+  const bothAtDoor = players.every(
+    player => player.x === gameState.door.x && player.y === gameState.door.y
   );
 
   if (bothAtDoor) {
     console.log('🎉 Both players reached the door! Level completed!');
     gameState.gameWon = true;
     gameState.victoryTime = new Date().toISOString();
-    
+
     // Advance to next level after a brief delay
     setTimeout(() => {
       advanceToNextLevel();
     }, 2000);
-    
+
     // Broadcast victory state
     broadcastCustomizedGameState();
     return true;
@@ -826,21 +826,23 @@ io.on('connection', socket => {
 
         // === SPECIAL CASE: DOOR ESCAPE ===
         // Check if player is trying to escape through the door
-        if (gameState.door && gameState.key && 
-            gameState.key.heldBy === playerId && 
-            gameState.door.isUnlocked && 
-            isAdjacent(player, gameState.door)) {
-          
+        if (
+          gameState.door &&
+          gameState.key &&
+          gameState.key.heldBy === playerId &&
+          gameState.door.isUnlocked &&
+          isAdjacent(player, gameState.door)
+        ) {
           console.log(`Player ${playerId} is escaping through the door!`);
-          
+
           // Send escape message to player
           const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
           if (socket) {
-            socket.emit('doorMessage', { 
-              message: '🎉 You escaped! Checking if your partner is ready...' 
+            socket.emit('doorMessage', {
+              message: '🎉 You escaped! Checking if your partner is ready...',
             });
           }
-          
+
           // Check if both players are at the door for level completion
           checkDoorWinCondition();
           return; // Don't process as regular item use
@@ -875,7 +877,9 @@ io.on('connection', socket => {
           if (item === ITEM_TYPES.DOUSE_FIRE) {
             // For Level 1 cooperative puzzle, check fires array
             if (currentLevel === 'level1' && Array.isArray(gameState.fires)) {
-              const fireAtPos = gameState.fires.find(f => f.x === pos.x && f.y === pos.y && !f.isDoused);
+              const fireAtPos = gameState.fires.find(
+                f => f.x === pos.x && f.y === pos.y && !f.isDoused
+              );
               if (fireAtPos) {
                 fireAtPos.isDoused = true;
                 console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
@@ -1019,9 +1023,13 @@ io.on('connection', socket => {
 
         // Prevent movement onto undoused fire tiles (from fires array)
         if (Array.isArray(gameState.fires)) {
-          const fireAtTarget = gameState.fires.find(f => f.x === newX && f.y === newY && !f.isDoused);
+          const fireAtTarget = gameState.fires.find(
+            f => f.x === newX && f.y === newY && !f.isDoused
+          );
           if (fireAtTarget) {
-            console.log(`Move blocked: ${playerId} tried to move onto undoused fire at (${newX}, ${newY})`);
+            console.log(
+              `Move blocked: ${playerId} tried to move onto undoused fire at (${newX}, ${newY})`
+            );
             return; // Cannot move onto undoused fire
           }
         }
@@ -1034,7 +1042,12 @@ io.on('connection', socket => {
         player.lastMoveDirection = direction; // Store direction for sprite flipping
 
         // === KEY PICKUP LOGIC ===
-        if (gameState.key && !gameState.key.heldBy && player.x === gameState.key.x && player.y === gameState.key.y) {
+        if (
+          gameState.key &&
+          !gameState.key.heldBy &&
+          player.x === gameState.key.x &&
+          player.y === gameState.key.y
+        ) {
           gameState.key.heldBy = playerId;
           console.log(`Player ${playerId} picked up the key!`);
         }
@@ -1042,7 +1055,7 @@ io.on('connection', socket => {
         // === DOOR INTERACTION LOGIC ===
         if (gameState.door) {
           const isAdjacentToDoor = isAdjacent(player, gameState.door);
-          
+
           if (isAdjacentToDoor && gameState.key) {
             if (gameState.key.heldBy === playerId && !gameState.door.isUnlocked) {
               // Player has key and is adjacent to door - auto-unlock
@@ -1054,8 +1067,8 @@ io.on('connection', socket => {
               // Send reminder message to this specific player
               const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
               if (socket) {
-                socket.emit('doorMessage', { 
-                  message: '🔒 You need the key to unlock this door! Find it first.' 
+                socket.emit('doorMessage', {
+                  message: '🔒 You need the key to unlock this door! Find it first.',
                 });
               }
             }
