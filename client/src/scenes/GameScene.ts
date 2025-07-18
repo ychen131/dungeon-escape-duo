@@ -13,6 +13,7 @@ interface GameState {
     gameWon?: boolean;
     gameCompleted?: boolean;
     currentPlayerTurn?: string;
+    actionsRemaining?: number;
     yourItem?: string;
     levelProgression?: number;
     currentLevel?: string;
@@ -50,6 +51,7 @@ export class GameScene extends Phaser.Scene {
     private connectionRejected: boolean = false;
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
+    private endTurnButton: HTMLElement | null = null;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -105,6 +107,18 @@ export class GameScene extends Phaser.Scene {
         // Get DOM elements
         this.statusElement = document.getElementById('status');
         this.itemDisplayElement = document.getElementById('item-display');
+        this.endTurnButton = document.getElementById('end-turn-btn');
+        
+        // Set up end turn button event listener
+        if (this.endTurnButton) {
+            this.endTurnButton.addEventListener('click', () => {
+                console.log('🔄 End turn button clicked');
+                if (this.socket && this.serverGameState?.gameStarted && 
+                    this.serverGameState?.currentPlayerTurn === this.myPlayerId) {
+                    this.socket.emit('endTurn');
+                }
+            });
+        }
         
         // Create character animations
         this.createCharacterAnimations();
@@ -321,6 +335,7 @@ export class GameScene extends Phaser.Scene {
             
             this.updateGameStatus();
             this.updatePlayerSprites();
+            this.updateEndTurnButton();
             
         } catch (error) {
             console.error('❌ Error handling game state:', error);
@@ -368,10 +383,14 @@ export class GameScene extends Phaser.Scene {
                 const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
                 
                 if (isMyTurn) {
-                    this.updateStatus(`🟢 YOUR TURN | You are ${this.myPlayerId} | Arrow keys: move, SPACE: use item`, '#2ecc71', '18px', 'bold');
+                    const actionsText = this.serverGameState.actionsRemaining !== undefined ? 
+                        ` | ${this.serverGameState.actionsRemaining} actions left` : '';
+                    this.updateStatus(`🟢 YOUR TURN | You are ${this.myPlayerId}${actionsText} | Arrow keys: move, SPACE: use item`, '#2ecc71', '18px', 'bold');
                 } else {
                     const otherPlayer = this.serverGameState.currentPlayerTurn?.toUpperCase();
-                    this.updateStatus(`⏳ ${otherPlayer}'S TURN | You are ${this.myPlayerId} | Wait for your partner...`, '#f39c12');
+                    const actionsText = this.serverGameState.actionsRemaining !== undefined ? 
+                        ` | ${this.serverGameState.actionsRemaining} actions left` : '';
+                    this.updateStatus(`⏳ ${otherPlayer}'S TURN${actionsText} | You are ${this.myPlayerId} | Wait for your partner...`, '#f39c12');
                 }
                 
                 if (this.serverGameState.yourItem) {
@@ -400,6 +419,29 @@ export class GameScene extends Phaser.Scene {
         if (this.itemDisplayElement) {
             this.itemDisplayElement.textContent = text;
             this.itemDisplayElement.style.color = color;
+        }
+    }
+
+    private updateEndTurnButton() {
+        if (this.endTurnButton) {
+            const gameState = this.serverGameState;
+            
+            // Show button only when game is started and not won
+            if (gameState?.gameStarted && !gameState?.gameWon && !gameState?.gameCompleted) {
+                this.endTurnButton.style.display = 'block';
+                
+                // Enable button only when it's the current player's turn
+                if (gameState.currentPlayerTurn === this.myPlayerId) {
+                    (this.endTurnButton as HTMLButtonElement).disabled = false;
+                    this.endTurnButton.style.opacity = '1';
+                } else {
+                    (this.endTurnButton as HTMLButtonElement).disabled = true;
+                    this.endTurnButton.style.opacity = '0.5';
+                }
+            } else {
+                // Hide button when game is not active
+                this.endTurnButton.style.display = 'none';
+            }
         }
     }
 

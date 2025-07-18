@@ -192,15 +192,15 @@ function detectContentBounds(layout) {
 
 const MAP_POOL = {
   level1: [
-    // Level 1 - Use the tilemap file for now, can add more later
-    'public/assets/level1.tmj',
+    // Level 1 - Use the tilemap file from the source directory (for server parsing)
+    'client/public/assets/level1.tmj', // Server reads from source for parsing
     // Future tilemaps can be added here:
-    // 'public/assets/level1_alt1.tmj',
-    // 'public/assets/level1_alt2.tmj'
+    // 'client/public/assets/level1_alt1.tmj',
+    // 'client/public/assets/level1_alt2.tmj'
   ],
   level2: [
-    // Level 2 - For now, fall back to hardcoded if no tilemap available
-    // 'public/assets/level2.tmj'
+    // Level 2 - We'll add the tilemap file here when created
+    // 'client/public/assets/level2.tmj' // Will be added when we create Level 2 assets
     // Fallback to hardcoded arrays for level 2 for now
     [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -303,6 +303,7 @@ const gameState = {
   gridWidth: 12, // Will be updated by loadNewMap
   gridHeight: 8, // Will be updated by loadNewMap
   currentPlayerTurn: null, // Tracks whose turn it is: 'player1' or 'player2'
+  actionsRemaining: 2, // Track remaining actions for current player
   gameStarted: false, // Tracks if both players are connected and game has begun
   playerItems: {}, // Tracks current items for each player: { player1: 'Douse Fire', player2: 'Build Bridge' }
   gameWon: false, // Tracks if the game has been won (both players reached exit)
@@ -653,6 +654,7 @@ function advanceToNextLevel() {
     gameState.gameWon = false;
     gameState.gameStarted = true; // Both players still connected
     gameState.currentPlayerTurn = 'player1'; // Player 1 starts new level
+    gameState.actionsRemaining = 2; // Reset actions for new level
     gameState.levelTransition = null; // Clear transition state
 
     // Reset player positions to starting positions
@@ -715,6 +717,7 @@ function startGame() {
   if (getConnectedPlayerCount() === 2 && !gameState.gameStarted) {
     gameState.gameStarted = true;
     gameState.currentPlayerTurn = 'player1'; // Player 1 starts first
+    gameState.actionsRemaining = 2; // Initialize actions remaining
 
     // Assign random items to players
     assignRandomItems();
@@ -724,6 +727,15 @@ function startGame() {
     // Broadcast game start to all players (customized for each)
     broadcastCustomizedGameState();
   }
+}
+
+// Helper function to switch turns and reset actions
+function switchTurn() {
+  gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
+  gameState.actionsRemaining = 2; // Reset actions to 2 for the new turn
+  console.log(
+    `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
+  );
 }
 
 // Socket.io connection handling
@@ -902,13 +914,18 @@ io.on('connection', socket => {
         }
 
         if (itemUsed) {
-          // Switch turns after successful item use
-          gameState.currentPlayerTurn =
-            gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
-          console.log(`Turn switched to: ${gameState.currentPlayerTurn} after item use`);
+          // Decrement actions remaining after successful item use
+          gameState.actionsRemaining--;
+          console.log(
+            `${playerId} used 1 action (item), ${gameState.actionsRemaining} actions remaining`
+          );
 
-          // Reassign new random items for next turn
-          assignRandomItems();
+          // Auto-switch turns if no actions remaining
+          if (gameState.actionsRemaining <= 0) {
+            switchTurn();
+            // Reassign new random items for next turn
+            assignRandomItems();
+          }
 
           // Broadcast updated game state to all clients
           broadcastCustomizedGameState();
@@ -1088,10 +1105,14 @@ io.on('connection', socket => {
         }
 
         if (!gameWon) {
-          // Only switch turns if game hasn't been won
-          gameState.currentPlayerTurn =
-            gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
-          console.log(`Turn switched to: ${gameState.currentPlayerTurn}`);
+          // Decrement actions remaining after valid move
+          gameState.actionsRemaining--;
+          console.log(`${playerId} used 1 action, ${gameState.actionsRemaining} actions remaining`);
+
+          // Auto-switch turns if no actions remaining
+          if (gameState.actionsRemaining <= 0) {
+            switchTurn();
+          }
         }
 
         // Broadcast updated game state to all clients (customized for each)
@@ -1102,6 +1123,49 @@ io.on('connection', socket => {
         socket.emit('gameError', {
           message: 'Move processing failed',
           error: moveError.message,
+        });
+      }
+    });
+
+    // Handle end turn requests from this client
+    socket.on('endTurn', () => {
+      try {
+        const player = gameState.players[playerId];
+
+        if (!player) {
+          console.warn(`⚠️  endTurn from non-existent player: ${playerId}`);
+          return;
+        }
+
+        // Check if game has started and it's this player's turn
+        if (!gameState.gameStarted) {
+          console.log(`End turn rejected: Game not started`);
+          return;
+        }
+
+        if (gameState.currentPlayerTurn !== playerId) {
+          console.log(
+            `End turn rejected: Not ${playerId}'s turn (current: ${gameState.currentPlayerTurn})`
+          );
+          return;
+        }
+
+        // Player is ending their turn early
+        console.log(
+          `${playerId} ended their turn early (had ${gameState.actionsRemaining} actions remaining)`
+        );
+
+        // Switch turns immediately
+        switchTurn();
+
+        // Broadcast updated game state to all clients
+        broadcastCustomizedGameState();
+      } catch (endTurnError) {
+        console.error(`❌ Error processing end turn for ${playerId}:`, endTurnError);
+        // Send error state to player
+        socket.emit('gameError', {
+          message: 'End turn processing failed',
+          error: endTurnError.message,
         });
       }
     });

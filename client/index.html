@@ -56,6 +56,28 @@
             font-size: 14px;
             text-align: center;
         }
+
+        #end-turn-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background-color 0.3s ease;
+            display: none; /* Hidden by default until game starts */
+        }
+
+        #end-turn-btn:hover {
+            background-color: #c0392b;
+        }
+
+        #end-turn-btn:disabled {
+            background-color: #7f8c8d;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -64,6 +86,7 @@
         <div id="game"></div>
         <div id="status">Connecting to server...</div>
         <div id="item-display">Loading game...</div>
+        <button id="end-turn-btn">End Turn</button>
     </div>
     
     <!-- Socket.io client library -->
