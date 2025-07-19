@@ -279,8 +279,8 @@ const LEVELS = {
         { x: 9, y: 5, isDoused: false }, // Another fire tile from Layer 3
       ],
       pressurePlate: {
-        x: 7,
-        y: 4, // Pressure plate tile (ID 28) from Layer 3
+        x: 13,
+        y: 12, // Pressure plate positioned to the left of player 1 spawn
         isPressed: false,
       },
       trapDoor: {
@@ -1155,6 +1155,48 @@ io.on('connection', socket => {
         player.x = newX;
         player.y = newY;
         player.lastMoveDirection = direction; // Store direction for sprite flipping
+
+        // === PRESSURE PLATE DETECTION LOGIC ===
+        if (gameState.pressurePlate) {
+          const wasPressed = gameState.pressurePlate.isPressed;
+          
+          // Debug logging
+          console.log(`🔍 DEBUG: Checking pressure plate at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
+          console.log(`🔍 DEBUG: Player ${playerId} moved to (${newX}, ${newY})`);
+          
+          // Check if any player is currently on the pressure plate
+          const playersOnPlate = Object.values(gameState.players).filter(
+            p => p.x === gameState.pressurePlate.x && p.y === gameState.pressurePlate.y
+          );
+          
+          console.log(`🔍 DEBUG: Players on plate: ${playersOnPlate.length}`);
+          
+          gameState.pressurePlate.isPressed = playersOnPlate.length > 0;
+          
+          // If pressure plate state changed, log it and notify clients
+          if (wasPressed !== gameState.pressurePlate.isPressed) {
+            if (gameState.pressurePlate.isPressed) {
+              const playerOnPlate = playersOnPlate[0];
+              const playerIds = Object.keys(gameState.players);
+              const playerName = playerIds.indexOf(playerOnPlate === gameState.players[playerIds[0]] ? playerIds[0] : playerIds[1]) === 0 ? 'Player 1' : 'Player 2';
+              console.log(`🔘 PRESSURE PLATE ACTIVATED by ${playerName} at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
+              
+              // Send message to all clients
+              io.emit('pressurePlateMessage', {
+                message: `🔘 Pressure plate activated by ${playerName}!`,
+                isPressed: true
+              });
+            } else {
+              console.log(`⚪ PRESSURE PLATE DEACTIVATED at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
+              
+              // Send message to all clients  
+              io.emit('pressurePlateMessage', {
+                message: `⚪ Pressure plate deactivated`,
+                isPressed: false
+              });
+            }
+          }
+        }
 
         // === KEY PICKUP LOGIC ===
         if (
