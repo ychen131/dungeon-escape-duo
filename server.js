@@ -610,7 +610,12 @@ function createCustomizedGameState(playerId) {
 
     // Debug: Check if snail is included
     if (customizedState.snail) {
-      console.log('🐌 Snail included in customized state for', playerId, ':', customizedState.snail);
+      console.log(
+        '🐌 Snail included in customized state for',
+        playerId,
+        ':',
+        customizedState.snail
+      );
     } else {
       console.log('⚠️ No snail in customized state for', playerId);
     }
@@ -871,11 +876,13 @@ function calculateDistance(pos1, pos2) {
 
 function findNearestPlayer(slime) {
   const players = Object.values(gameState.players);
-  if (players.length === 0) return null;
-  
+  if (players.length === 0) {
+    return null;
+  }
+
   let nearestPlayer = players[0];
   let minDistance = calculateDistance(slime, nearestPlayer);
-  
+
   for (let i = 1; i < players.length; i++) {
     const distance = calculateDistance(slime, players[i]);
     if (distance < minDistance) {
@@ -883,32 +890,43 @@ function findNearestPlayer(slime) {
       nearestPlayer = players[i];
     }
   }
-  
+
   return nearestPlayer;
 }
 
 function moveSlimeToward(slime, target) {
-  if (!target) return false;
-  
+  if (!target) {
+    return false;
+  }
+
   let newX = slime.x;
   let newY = slime.y;
-  
+
   // Move one step toward target (simple AI)
-  if (target.x > slime.x) newX++;
-  else if (target.x < slime.x) newX--;
-  else if (target.y > slime.y) newY++;
-  else if (target.y < slime.y) newY--;
-  
+  if (target.x > slime.x) {
+    newX++;
+  } else if (target.x < slime.x) {
+    newX--;
+  } else if (target.y > slime.y) {
+    newY++;
+  } else if (target.y < slime.y) {
+    newY--;
+  }
+
   // Check if the new position is valid (within bounds and not a wall)
   if (newX < 0 || newX >= gameState.gridWidth || newY < 0 || newY >= gameState.gridHeight) {
     return false; // Out of bounds
   }
-  
+
   const targetTile = gameState.dungeonLayout[newY][newX];
-  if (targetTile === TILE_TYPES.WALL || targetTile === TILE_TYPES.FIRE_HAZARD || targetTile === TILE_TYPES.CHASM) {
+  if (
+    targetTile === TILE_TYPES.WALL ||
+    targetTile === TILE_TYPES.FIRE_HAZARD ||
+    targetTile === TILE_TYPES.CHASM
+  ) {
     return false; // Cannot move onto walls or hazards
   }
-  
+
   // Check if another slime is already at this position
   if (gameState.slimes) {
     const slimeAtTarget = gameState.slimes.find(s => s !== slime && s.x === newX && s.y === newY);
@@ -916,13 +934,13 @@ function moveSlimeToward(slime, target) {
       return false; // Another slime is in the way
     }
   }
-  
+
   // Check if a player is at this position (slimes don't move onto players directly)
   const playerAtTarget = Object.values(gameState.players).find(p => p.x === newX && p.y === newY);
   if (playerAtTarget) {
     return false; // Player is in the way
   }
-  
+
   // Valid move - update slime position
   slime.x = newX;
   slime.y = newY;
@@ -931,41 +949,43 @@ function moveSlimeToward(slime, target) {
 }
 
 function updateSlimes() {
-  if (!gameState.slimes || gameState.slimes.length === 0) return;
-  
+  if (!gameState.slimes || gameState.slimes.length === 0) {
+    return;
+  }
+
   console.log('🟢 Updating slimes...');
-  
+
   gameState.slimes.forEach((slime, index) => {
     // Handle stun duration
     if (slime.isStunned && slime.stunDuration > 0) {
       slime.stunDuration--;
       console.log(`🟢 Slime ${index} stunned for ${slime.stunDuration} more turns`);
-      
+
       if (slime.stunDuration <= 0) {
         slime.isStunned = false;
         console.log(`🟢 Slime ${index} is no longer stunned`);
       }
       return; // Skip movement when stunned
     }
-    
+
     // Check if any player is within activation range (2 tiles)
     const players = Object.values(gameState.players);
     const playersInRange = players.filter(player => {
       const distance = calculateDistance(slime, player);
       return distance <= 2; // Activate when player is within 2 tiles
     });
-    
+
     if (playersInRange.length === 0) {
       console.log(`🟢 Slime ${index} dormant (no players within 2 tiles)`);
       return; // Skip movement when no players are close enough
     }
-    
+
     // Move toward nearest player (only if activated)
     const nearestPlayer = findNearestPlayer(slime);
     if (nearestPlayer) {
       const distance = calculateDistance(slime, nearestPlayer);
       console.log(`🟢 Slime ${index} activated! Nearest player at distance ${distance}`);
-      
+
       const moved = moveSlimeToward(slime, nearestPlayer);
       if (!moved) {
         console.log(`🟢 Slime ${index} could not move (blocked path)`);
@@ -976,52 +996,54 @@ function updateSlimes() {
 
 // Snail AI Functions
 function updateSnail() {
-  if (!gameState.snail) return;
-  
+  if (!gameState.snail) {
+    return;
+  }
+
   console.log('🐌 Updating snail...');
-  
+
   // Check for player interactions first
   const players = Object.values(gameState.players);
   const playersNearSnail = players.filter(player => {
     const distance = calculateDistance(gameState.snail, player);
     return distance <= 1; // Player must be adjacent to snail
   });
-  
+
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
     const currentTurn = gameState.currentPlayerTurn === 'player1' ? 1 : 2;
     if (gameState.snail.lastInteractionTurn !== currentTurn) {
-      const messages = [
-        "Good Day, crawler.",
-        "Where is my key...."
-      ];
+      const messages = ['Good Day, crawler.', 'Where is my key....'];
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-      
+
       console.log(`🐌 Snail says: "${randomMessage}"`);
-      
+
       // Send message to all clients
       io.emit('snailMessage', {
         message: `🐌 Snail: "${randomMessage}"`,
-        snailPos: { x: gameState.snail.x, y: gameState.snail.y }
+        snailPos: { x: gameState.snail.x, y: gameState.snail.y },
       });
-      
+
       gameState.snail.lastInteractionTurn = currentTurn;
     }
   }
-  
+
   // Move snail horizontally within its range
   const newX = gameState.snail.x + gameState.snail.direction;
-  
+
   // Check boundaries based on movement range
   const leftBound = gameState.snail.startX - gameState.snail.moveRange;
   const rightBound = gameState.snail.startX;
-  
+
   // Check if we hit a wall or boundary
-  if (newX <= leftBound || newX >= rightBound || 
-      newX < 0 || newX >= gameState.gridWidth ||
-      (gameState.dungeonLayout[gameState.snail.y] && 
-       gameState.dungeonLayout[gameState.snail.y][newX] === TILE_TYPES.WALL)) {
-    
+  if (
+    newX <= leftBound ||
+    newX >= rightBound ||
+    newX < 0 ||
+    newX >= gameState.gridWidth ||
+    (gameState.dungeonLayout[gameState.snail.y] &&
+      gameState.dungeonLayout[gameState.snail.y][newX] === TILE_TYPES.WALL)
+  ) {
     // Reverse direction
     gameState.snail.direction *= -1;
     console.log(`🐌 Snail hit boundary/wall, reversing direction`);
@@ -1039,13 +1061,13 @@ function switchTurn() {
   console.log(
     `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
   );
-  
+
   // Update slimes after turn switch
   updateSlimes();
-  
+
   // Update snail after turn switch
   updateSnail();
-  
+
   // Broadcast updated game state after entity movement
   broadcastCustomizedGameState();
 }
@@ -1220,18 +1242,20 @@ io.on('connection', socket => {
               if (slimeAtPos) {
                 slimeAtPos.isStunned = true;
                 slimeAtPos.stunDuration = 3; // Stun for 3 turns
-                console.log(`${playerId} used ${item} to stun slime at (${pos.x}, ${pos.y}) for 3 turns`);
-                
+                console.log(
+                  `${playerId} used ${item} to stun slime at (${pos.x}, ${pos.y}) for 3 turns`
+                );
+
                 // Send message to all clients about slime stunning
                 io.emit('slimeMessage', {
                   message: `🟢 Slime stunned! Slime is immobilized for 3 turns.`,
-                  playerId: playerId
+                  playerId: playerId,
                 });
-                
+
                 itemUsed = true;
               }
             }
-            
+
             // Check fires array (used by both Level 1 and Level 2)
             if (Array.isArray(gameState.fires)) {
               const fireAtPos = gameState.fires.find(
@@ -1394,12 +1418,12 @@ io.on('connection', socket => {
           const trapAtTarget = gameState.trapDoors.find(
             trap => trap.x === newX && trap.y === newY && !trap.isOpen
           );
-          
+
           if (trapAtTarget) {
             console.log(
               `Move blocked: ${playerId} tried to move onto active trap at (${newX}, ${newY}). A pressure plate must be activated first!`
             );
-            
+
             // Send message to player about the trap
             const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
             if (socket) {
@@ -1407,7 +1431,7 @@ io.on('connection', socket => {
                 message: '🔴 Trap blocks your path! Someone must stand on a pressure plate.',
               });
             }
-            
+
             return; // Cannot move onto active trap
           }
         }
@@ -1421,104 +1445,116 @@ io.on('connection', socket => {
 
         // === PRESSURE PLATE DETECTION LOGIC ===
         if (gameState.pressurePlates) {
-          let anyPlateActivated = false;
-          let plateActivationMessages = [];
-          
+          const plateActivationMessages = [];
+
           // Check each pressure plate
           gameState.pressurePlates.forEach((plate, index) => {
             const wasPressed = plate.isPressed;
-            
+
             // Check if any player is currently on this pressure plate
             const playersOnPlate = Object.values(gameState.players).filter(
               p => p.x === plate.x && p.y === plate.y
             );
-            
+
             plate.isPressed = playersOnPlate.length > 0;
-            if (plate.isPressed) anyPlateActivated = true;
-            
+
             // If this plate's state changed, log it and prepare messages
             if (wasPressed !== plate.isPressed) {
               if (plate.isPressed) {
                 const playerOnPlate = playersOnPlate[0];
                 const playerIds = Object.keys(gameState.players);
-                const playerName = playerIds.indexOf(playerOnPlate === gameState.players[playerIds[0]] ? playerIds[0] : playerIds[1]) === 0 ? 'Player 1' : 'Player 2';
-                console.log(`🔘 PRESSURE PLATE ${index + 1} ACTIVATED by ${playerName} at (${plate.x}, ${plate.y})`);
-                
+                const playerName =
+                  playerIds.indexOf(
+                    playerOnPlate === gameState.players[playerIds[0]] ? playerIds[0] : playerIds[1]
+                  ) === 0
+                    ? 'Player 1'
+                    : 'Player 2';
+                console.log(
+                  `🔘 PRESSURE PLATE ${index + 1} ACTIVATED by ${playerName} at (${plate.x}, ${plate.y})`
+                );
+
                 plateActivationMessages.push({
                   message: `🔘 Pressure plate ${index + 1} activated by ${playerName}!`,
-                  isPressed: true
+                  isPressed: true,
                 });
               } else {
-                console.log(`⚪ PRESSURE PLATE ${index + 1} DEACTIVATED at (${plate.x}, ${plate.y})`);
-                
+                console.log(
+                  `⚪ PRESSURE PLATE ${index + 1} DEACTIVATED at (${plate.x}, ${plate.y})`
+                );
+
                 plateActivationMessages.push({
                   message: `⚪ Pressure plate ${index + 1} deactivated`,
-                  isPressed: false
+                  isPressed: false,
                 });
               }
             }
           });
-          
+
           // === TRAP STATE CHANGES ===
           // Update trap state based on SPECIFIC pressure plate activation
           if (gameState.trapDoors && gameState.pressurePlates) {
             let anyTrapStateChanged = false;
-            
+
             gameState.trapDoors.forEach((trap, index) => {
               const wasTrapOpen = trap.isOpen;
               let shouldBeOpen = false;
-              
+
               // Specific trap control logic:
               if (index === 0) {
                 // Trap 1 (14, 10) - controlled by middle pressure plates (indices 0 and 1)
-                shouldBeOpen = gameState.pressurePlates[0].isPressed || gameState.pressurePlates[1].isPressed;
+                shouldBeOpen =
+                  gameState.pressurePlates[0].isPressed || gameState.pressurePlates[1].isPressed;
               } else if (index === 1 || index === 2) {
                 // Trap 2 (17, 6) and Trap 3 (17, 7) - controlled by left pressure plate (index 2)
                 shouldBeOpen = gameState.pressurePlates[2].isPressed;
               }
-              
+
               trap.isOpen = shouldBeOpen;
-              
+
               // Log trap state changes
               if (wasTrapOpen !== trap.isOpen) {
                 anyTrapStateChanged = true;
                 if (trap.isOpen) {
-                  console.log(`🟢 TRAP ${index + 1} DISABLED (safe to pass) at (${trap.x}, ${trap.y}) - specific pressure plate active`);
+                  console.log(
+                    `🟢 TRAP ${index + 1} DISABLED (safe to pass) at (${trap.x}, ${trap.y}) - specific pressure plate active`
+                  );
                 } else {
-                  console.log(`🔴 TRAP ${index + 1} ACTIVATED (blocks movement) at (${trap.x}, ${trap.y}) - controlling pressure plate inactive`);
+                  console.log(
+                    `🔴 TRAP ${index + 1} ACTIVATED (blocks movement) at (${trap.x}, ${trap.y}) - controlling pressure plate inactive`
+                  );
                 }
               }
             });
-            
+
             // Send specific messages if any trap state changed
             if (anyTrapStateChanged) {
               const middleTrapsOpen = gameState.trapDoors[0].isOpen;
               const rightTrapsOpen = gameState.trapDoors[1].isOpen && gameState.trapDoors[2].isOpen;
-              
+
               if (middleTrapsOpen && rightTrapsOpen) {
                 io.emit('trapStateMessage', {
                   message: '🟢 All paths unlocked! Both chambers accessible.',
-                  isOpen: true
+                  isOpen: true,
                 });
               } else if (middleTrapsOpen) {
                 io.emit('trapStateMessage', {
                   message: '🟢 Middle path unlocked! Right chamber still blocked.',
-                  isOpen: true
+                  isOpen: true,
                 });
               } else if (rightTrapsOpen) {
                 io.emit('trapStateMessage', {
                   message: '🟢 Right chamber unlocked! Middle path still blocked.',
-                  isOpen: true
+                  isOpen: true,
                 });
               } else {
                 io.emit('trapStateMessage', {
                   message: '🔴 All paths blocked! Find the pressure plates.',
-                  isOpen: false
+                  isOpen: false,
                 });
               }
             }
           }
-          
+
           // Send pressure plate activation messages
           plateActivationMessages.forEach(msg => {
             io.emit('pressurePlateMessage', msg);
