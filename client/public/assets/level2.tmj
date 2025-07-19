@@ -127,7 +127,7 @@
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 41, 28, 41, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 63, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -185,8 +185,30 @@
  "tileheight":32,
  "tilesets":[
         {
+         "columns":7,
          "firstgid":1,
-         "source":"..\/..\/..\/..\/..\/..\/tiled\/cardinal-zebra.tsx"
+         "image":"Full.png",
+         "imageheight":256,
+         "imagewidth":224,
+         "margin":0,
+         "name":"Full",
+         "spacing":0,
+         "tilecount":56,
+         "tileheight":32,
+         "tilewidth":32
+        }, 
+        {
+         "columns":7,
+         "firstgid":57,
+         "image":"Full.png",
+         "imageheight":256,
+         "imagewidth":224,
+         "margin":0,
+         "name":"Full",
+         "spacing":0,
+         "tilecount":56,
+         "tileheight":32,
+         "tilewidth":32
         }],
  "tilewidth":32,
  "type":"map",

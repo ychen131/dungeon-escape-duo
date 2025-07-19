@@ -44,10 +44,35 @@ interface GameState {
         y: number;
         isUnlocked: boolean;
     };
+    // Level 2 cooperative puzzle objects
+    pressurePlates?: Array<{
+        x: number;
+        y: number;
+        isPressed: boolean;
+    }>;
+    trapDoors?: Array<{
+        x: number;
+        y: number;
+        isOpen: boolean;
+    }>;
+    slimes?: Array<{
+        x: number;
+        y: number;
+        isStunned: boolean;
+        stunDuration: number;
+    }>;
+    snail?: {
+        x: number;
+        y: number;
+        direction: number;
+        moveRange: number;
+        startX: number;
+        lastInteractionTurn: number;
+    };
 }
 
 export class GameScene extends Phaser.Scene {
-    private playerSprites: { [key: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text } = {};
+    private playerSprites: { [key: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text | Phaser.GameObjects.Arc } = {};
     private myPlayerId: string | null = null;
     private socket: any;
     private serverGameState: GameState | null = null;
@@ -56,6 +81,9 @@ export class GameScene extends Phaser.Scene {
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
     private tilemapLayers: Phaser.Tilemaps.TilemapLayer[] = []; // Track active tilemap layers
+    
+    // Game object sprites
+    private pressurePlateSprites: { [key: string]: Phaser.GameObjects.Sprite } = {};
     
     // Dynamic map sizing - will be set when tilemap is rendered
     private currentTileSize: number = 50; // Default tile size
@@ -94,6 +122,17 @@ export class GameScene extends Phaser.Scene {
         this.load.spritesheet('fire', 'fire.png', {
             frameWidth: 32, // 448px ÷ 14 frames = 32px per frame
             frameHeight: 48, // Height is 48px
+        });
+        // Load pressure plate spritesheet
+        this.load.spritesheet('pressurePlate', 'presure-plate.png', {
+            frameWidth: 16, // 16px per frame
+            frameHeight: 32, // 32px height
+        });
+
+        
+        // Add success logging for pressure plate loading
+        this.load.on('filecomplete-spritesheet-pressurePlate', () => {
+            console.log('✅ Pressure plate spritesheet loaded successfully');
         });
         
         // Keep loading individual tiles as backup for fallback mode
@@ -350,6 +389,37 @@ export class GameScene extends Phaser.Scene {
         } else {
             console.warn('⚠️ Fire sprite sheet not loaded, skipping animations');
         }
+        
+        // Pressure Plate animations
+        if (this.textures.exists('pressurePlate')) {
+            // Calculate frame indices (192px wide ÷ 16px = 12 frames per row)
+            // Row 5 (1-indexed) = Row 4 (0-indexed), Frame 7 (1-indexed) = Frame 6 (0-indexed)
+            const frameRow = 4; // Row 5 (1-indexed) = Row 4 (0-indexed)
+            const framesPerRow = 12; // 192px ÷ 16px = 12 frames per row
+            const idleFrame = frameRow * framesPerRow + 6; // Frame 7 (1-indexed) = Frame 6 (0-indexed)
+            const activatedFrame1 = frameRow * framesPerRow + 7; // Frame 8 (1-indexed) = Frame 7 (0-indexed)
+            const activatedFrame2 = frameRow * framesPerRow + 8; // Frame 9 (1-indexed) = Frame 8 (0-indexed)
+            
+            // Idle state
+            this.anims.create({
+                key: 'pressure_plate_idle',
+                frames: [{ key: 'pressurePlate', frame: idleFrame }],
+                frameRate: 1,
+                repeat: 0
+            });
+            
+            // Activated state
+            this.anims.create({
+                key: 'pressure_plate_activated',
+                frames: this.anims.generateFrameNumbers('pressurePlate', { start: activatedFrame1, end: activatedFrame2 }),
+                frameRate: 4,
+                repeat: 0 // Play animation once, don't loop
+            });
+            
+            console.log('✅ Pressure plate animations created');
+        } else {
+            console.warn('⚠️ Pressure plate sprite sheet not loaded, skipping animations');
+        }
     }
 
     private setupKeyboardInput() {
@@ -393,11 +463,64 @@ export class GameScene extends Phaser.Scene {
                 this.updateGameStatus(); // Restore normal status
             }, 3000);
         });
+
+        this.socket.on('pressurePlateMessage', (data: { message: string; isPressed: boolean }) => {
+            console.log('Pressure plate message:', data.message);
+            const color = data.isPressed ? '#2ecc71' : '#95a5a6'; // Green for activated, gray for deactivated
+            this.updateStatus(data.message, color, '16px', 'bold');
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
+        });
+
+        this.socket.on('trapMessage', (data: { message: string }) => {
+            console.log('Trap message:', data.message);
+            this.updateStatus(data.message, '#e74c3c', '16px', 'bold'); // Red for trap warnings
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
+        });
+
+        this.socket.on('trapStateMessage', (data: { message: string; isOpen: boolean }) => {
+            console.log('Trap state message:', data.message);
+            const color = data.isOpen ? '#2ecc71' : '#e74c3c'; // Green for safe, red for dangerous
+            this.updateStatus(data.message, color, '16px', 'bold');
+            
+            // Clear the message after 4 seconds (slightly longer for state changes)
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 4000);
+        });
+
+        this.socket.on('slimeMessage', (data: { message: string; playerId: string }) => {
+            console.log('Slime message:', data.message);
+            this.updateStatus(data.message, '#2ecc71', '16px', 'bold'); // Green for successful slime actions
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
+        });
+
+        this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
+            console.log('Snail message:', data.message);
+            this.updateStatus(data.message, '#f39c12', '16px', 'normal'); // Orange for snail interactions
+            
+            // Clear the message after 4 seconds (slightly longer for NPC dialogue)
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 4000);
+        });
     }
 
     private handleGameState(newGameState: GameState) {
         try {
             console.log('📡 Received game state from server:', newGameState);
+            console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
             
             if (!newGameState || typeof newGameState !== 'object') {
                 console.error('❌ Invalid game state received:', newGameState);
@@ -751,6 +874,7 @@ export class GameScene extends Phaser.Scene {
             if (this.textures.exists('key')) {
                 const keySprite = this.add.sprite(coords.x, coords.y, 'key');
                 keySprite.setOrigin(0.5, 0.5);
+                keySprite.setScale(2.0); // Make key bigger and more visible
                 keySprite.setDepth(90); // Below players but above tiles
                 keySprite.play('key_shine');
                 this.playerSprites['key'] = keySprite;
@@ -814,6 +938,146 @@ export class GameScene extends Phaser.Scene {
             const doorState = this.serverGameState.door.isUnlocked ? 'unlocked' : 
                              (this.serverGameState.key?.heldBy ? 'highlighted' : 'locked');
             console.log(`🚪 Rendered door (${doorState})`);
+        }
+
+        // Draw the pressure plates
+        if (this.serverGameState.pressurePlates) {
+            this.serverGameState.pressurePlates.forEach((plate, index) => {
+                const coords = this.getTilePixelPosition(plate.x, plate.y);
+                
+                // Destroy old pressure plate sprite if it exists for this index
+                if (this.pressurePlateSprites[`plate_${index}`]) {
+                    this.pressurePlateSprites[`plate_${index}`].destroy();
+                    delete this.pressurePlateSprites[`plate_${index}`];
+                }
+                
+                if (this.textures.exists('pressurePlate')) {
+                    const plateSprite = this.add.sprite(coords.x, coords.y, 'pressurePlate');
+                    plateSprite.setDepth(85); // Below fires and players but above tiles
+                    
+                    // Make the pressure plate bigger and ensure it fills most of the tile
+                    // 80% of tile size, the sprite is only 16px of the actual tile
+                    // in the bottom half. so we need to adust the origin too
+                    plateSprite.setOrigin(0.5, 0.7); 
+                    const scale = (this.currentTileSize * 0.75) / 16;
+                    plateSprite.setScale(scale);
+                    
+                    // Play appropriate animation based on state
+                    if (plate.isPressed) {
+                        plateSprite.play('pressure_plate_activated');
+                        console.log(`🔘 Rendered activated pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                    } else {
+                        plateSprite.play('pressure_plate_idle');
+                        console.log(`⚪ Rendered idle pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                    }
+                    
+                    // Store with unique key for each plate
+                    this.pressurePlateSprites[`plate_${index}`] = plateSprite;
+                    this.playerSprites[`pressure_plate_${index}`] = plateSprite;
+                } else {
+                    console.warn('⚠️ Pressure plate sprite not available, using fallback rendering');
+                    
+                    // Fallback: render a simple colored rectangle
+                    const fallbackColor = plate.isPressed ? 0x2ecc71 : 0x95a5a6;
+                    const fallbackRect = this.add.rectangle(coords.x, coords.y, 30, 30, fallbackColor);
+                    fallbackRect.setStrokeStyle(2, 0x000000);
+                    fallbackRect.setDepth(85);
+                    this.playerSprites[`pressure_plate_fallback_${index}`] = fallbackRect;
+                    
+                    const fallbackIcon = this.add.text(coords.x, coords.y, '⚪', {
+                        fontSize: '20px',
+                        color: '#000000'
+                    }).setOrigin(0.5);
+                    fallbackIcon.setDepth(86);
+                    this.playerSprites[`pressure_plate_fallback_icon_${index}`] = fallbackIcon;
+                    
+                    console.log(`🔄 Rendered fallback pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                }
+            });
+        } else {
+            console.warn('⚠️ No pressure plates found in game state');
+        }
+
+        // Draw the trap doors
+        if (this.serverGameState.trapDoors) {
+            this.serverGameState.trapDoors.forEach((trap, index) => {
+                const coords = this.getTilePixelPosition(trap.x, trap.y);
+                
+                // Determine trap appearance based on state
+                let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
+                let trapIcon = trap.isOpen ? '✅' : '❌';
+                let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
+                
+                const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
+                trapRect.setStrokeStyle(4, strokeColor);
+                trapRect.setDepth(85); // Same depth as pressure plate
+                this.playerSprites[`trap_${index}`] = trapRect;
+                
+                // Add trap label
+                const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
+                    fontSize: '20px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                trapLabel.setDepth(86);
+                this.playerSprites[`trap_label_${index}`] = trapLabel;
+                
+                const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                console.log(`🚪 Rendered trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+            });
+        }
+
+        // Draw the slimes
+        if (this.serverGameState.slimes) {
+            this.serverGameState.slimes.forEach((slime, index) => {
+                const coords = this.getTilePixelPosition(slime.x, slime.y);
+                
+                // Determine slime appearance based on state
+                let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
+                let slimeIcon = slime.isStunned ? '😵' : '🟢';
+                let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
+                
+                const slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
+                slimeCircle.setStrokeStyle(3, strokeColor);
+                slimeCircle.setDepth(90); // Above tiles but below players
+                this.playerSprites[`slime_${index}`] = slimeCircle;
+                
+                // Add slime label
+                const slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
+                    fontSize: '18px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                slimeLabel.setDepth(91);
+                this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                
+                const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                console.log(`🟢 Rendered slime ${index} (${slimeState}) at (${slime.x}, ${slime.y})`);
+            });
+        }
+
+        // Draw the snail (decorative NPC)
+        if (this.serverGameState.snail) {
+            console.log('🐌 Client: Rendering snail at', this.serverGameState.snail);
+            const coords = this.getTilePixelPosition(this.serverGameState.snail.x, this.serverGameState.snail.y);
+            
+            // Snail appearance - friendly orange color
+            const snailColor = 0xf39c12; // Orange
+            const snailIcon = '🐌';
+            const strokeColor = 0xe67e22;
+            
+            const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
+            snailCircle.setStrokeStyle(2, strokeColor);
+            snailCircle.setDepth(89); // Above tiles, below players and other entities
+            this.playerSprites['snail'] = snailCircle;
+            
+            // Add snail label
+            const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
+                fontSize: '16px',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            snailLabel.setDepth(90);
+            this.playerSprites['snail_label'] = snailLabel;
+            
+            console.log(`🐌 Rendered snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
         }
     }
 
