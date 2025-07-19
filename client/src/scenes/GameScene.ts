@@ -855,6 +855,7 @@ export class GameScene extends Phaser.Scene {
             if (this.textures.exists('key')) {
                 const keySprite = this.add.sprite(coords.x, coords.y, 'key');
                 keySprite.setOrigin(0.5, 0.5);
+                keySprite.setScale(2.0); // Make key bigger and more visible
                 keySprite.setDepth(90); // Below players but above tiles
                 keySprite.play('key_shine');
                 this.playerSprites['key'] = keySprite;
