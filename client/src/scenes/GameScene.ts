@@ -45,11 +45,11 @@ interface GameState {
         isUnlocked: boolean;
     };
     // Level 2 cooperative puzzle objects
-    pressurePlate?: {
+    pressurePlates?: Array<{
         x: number;
         y: number;
         isPressed: boolean;
-    };
+    }>;
     trapDoor?: {
         x: number;
         y: number;
@@ -75,7 +75,7 @@ export class GameScene extends Phaser.Scene {
     private tilemapLayers: Phaser.Tilemaps.TilemapLayer[] = []; // Track active tilemap layers
     
     // Game object sprites
-    private pressurePlateSprite: Phaser.GameObjects.Sprite | null = null;
+    private pressurePlateSprites: { [key: string]: Phaser.GameObjects.Sprite } = {};
     
     // Dynamic map sizing - will be set when tilemap is rendered
     private currentTileSize: number = 50; // Default tile size
@@ -921,56 +921,62 @@ export class GameScene extends Phaser.Scene {
             console.log(`🚪 Rendered door (${doorState})`);
         }
 
-        // Draw the pressure plate
-        if (this.serverGameState.pressurePlate) {
-            const coords = this.getTilePixelPosition(this.serverGameState.pressurePlate.x, this.serverGameState.pressurePlate.y);
-            
-            // Destroy old pressure plate sprite if it exists
-            if (this.pressurePlateSprite) {
-                this.pressurePlateSprite.destroy();
-                this.pressurePlateSprite = null;
-            }
-            
-            if (this.textures.exists('pressurePlate')) {
-                this.pressurePlateSprite = this.add.sprite(coords.x, coords.y, 'pressurePlate');
-                this.pressurePlateSprite.setDepth(85); // Below fires and players but above tiles
+        // Draw the pressure plates
+        if (this.serverGameState.pressurePlates) {
+            this.serverGameState.pressurePlates.forEach((plate, index) => {
+                const coords = this.getTilePixelPosition(plate.x, plate.y);
                 
-                // Make the pressure plate bigger and ensure it fills most of the tile
-                // 80% of tile size, the sprite is only 16px of the actual tile
-                // in the bottom half. so we need to adust the origin too
-                this.pressurePlateSprite.setOrigin(0.5, 0.7); 
-                const scale = (this.currentTileSize * 0.75) / 16;
-                this.pressurePlateSprite.setScale(scale);
-                
-                // Play appropriate animation based on state
-                if (this.serverGameState.pressurePlate.isPressed) {
-                    this.pressurePlateSprite.play('pressure_plate_activated');
-                    console.log(`🔘 Rendered activated pressure plate at (${this.serverGameState.pressurePlate.x}, ${this.serverGameState.pressurePlate.y})`);
-                } else {
-                    this.pressurePlateSprite.play('pressure_plate_idle');
-                    console.log(`⚪ Rendered idle pressure plate at (${this.serverGameState.pressurePlate.x}, ${this.serverGameState.pressurePlate.y})`);
+                // Destroy old pressure plate sprite if it exists for this index
+                if (this.pressurePlateSprites[`plate_${index}`]) {
+                    this.pressurePlateSprites[`plate_${index}`].destroy();
+                    delete this.pressurePlateSprites[`plate_${index}`];
                 }
-            }  else {
-                console.warn('⚠️ Pressure plate sprite not available, using fallback rendering');
                 
-                // Fallback: render a simple colored rectangle
-                const fallbackColor = this.serverGameState.pressurePlate.isPressed ? 0x2ecc71 : 0x95a5a6;
-                const fallbackRect = this.add.rectangle(coords.x, coords.y, 30, 30, fallbackColor);
-                fallbackRect.setStrokeStyle(2, 0x000000);
-                fallbackRect.setDepth(85);
-                this.playerSprites['pressure_plate_fallback'] = fallbackRect;
-                
-                const fallbackIcon = this.add.text(coords.x, coords.y, '⚪', {
-                    fontSize: '20px',
-                    color: '#000000'
-                }).setOrigin(0.5);
-                fallbackIcon.setDepth(86);
-                this.playerSprites['pressure_plate_fallback_icon'] = fallbackIcon;
-                
-                console.log(`🔄 Rendered fallback pressure plate at (${this.serverGameState.pressurePlate.x}, ${this.serverGameState.pressurePlate.y})`);
-            }
+                if (this.textures.exists('pressurePlate')) {
+                    const plateSprite = this.add.sprite(coords.x, coords.y, 'pressurePlate');
+                    plateSprite.setDepth(85); // Below fires and players but above tiles
+                    
+                    // Make the pressure plate bigger and ensure it fills most of the tile
+                    // 80% of tile size, the sprite is only 16px of the actual tile
+                    // in the bottom half. so we need to adust the origin too
+                    plateSprite.setOrigin(0.5, 0.7); 
+                    const scale = (this.currentTileSize * 0.75) / 16;
+                    plateSprite.setScale(scale);
+                    
+                    // Play appropriate animation based on state
+                    if (plate.isPressed) {
+                        plateSprite.play('pressure_plate_activated');
+                        console.log(`🔘 Rendered activated pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                    } else {
+                        plateSprite.play('pressure_plate_idle');
+                        console.log(`⚪ Rendered idle pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                    }
+                    
+                    // Store with unique key for each plate
+                    this.pressurePlateSprites[`plate_${index}`] = plateSprite;
+                    this.playerSprites[`pressure_plate_${index}`] = plateSprite;
+                } else {
+                    console.warn('⚠️ Pressure plate sprite not available, using fallback rendering');
+                    
+                    // Fallback: render a simple colored rectangle
+                    const fallbackColor = plate.isPressed ? 0x2ecc71 : 0x95a5a6;
+                    const fallbackRect = this.add.rectangle(coords.x, coords.y, 30, 30, fallbackColor);
+                    fallbackRect.setStrokeStyle(2, 0x000000);
+                    fallbackRect.setDepth(85);
+                    this.playerSprites[`pressure_plate_fallback_${index}`] = fallbackRect;
+                    
+                    const fallbackIcon = this.add.text(coords.x, coords.y, '⚪', {
+                        fontSize: '20px',
+                        color: '#000000'
+                    }).setOrigin(0.5);
+                    fallbackIcon.setDepth(86);
+                    this.playerSprites[`pressure_plate_fallback_icon_${index}`] = fallbackIcon;
+                    
+                    console.log(`🔄 Rendered fallback pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                }
+            });
         } else {
-            console.warn('⚠️ No pressure plate found in game state');
+            console.warn('⚠️ No pressure plates found in game state');
         }
 
         // Draw the trap door

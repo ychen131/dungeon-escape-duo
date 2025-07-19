@@ -278,11 +278,18 @@ const LEVELS = {
         { x: 6, y: 6, isDoused: false }, // Fire tile (ID 7) from Layer 3
         { x: 9, y: 5, isDoused: false }, // Another fire tile from Layer 3
       ],
-      pressurePlate: {
-        x: 13,
-        y: 12, // Pressure plate positioned to the left of player 1 spawn
-        isPressed: false,
-      },
+      pressurePlates: [
+        {
+          x: 13,
+          y: 12, // First pressure plate - left of player spawn
+          isPressed: false,
+        },
+        {
+          x: 14,
+          y: 8, // Second pressure plate - two tiles above trap (trap is at 14, 10)
+          isPressed: false,
+        },
+      ],
       trapDoor: {
         x: 14,
         y: 10, // Trap door area from analyzing the layout
@@ -411,8 +418,8 @@ function loadNewMap(level = null) {
     }
 
     // Level 2 objects
-    if (levelData.gameObjects.pressurePlate) {
-      gameState.pressurePlate = { ...levelData.gameObjects.pressurePlate };
+    if (levelData.gameObjects.pressurePlates) {
+      gameState.pressurePlates = levelData.gameObjects.pressurePlates.map(plate => ({ ...plate }));
     }
     if (levelData.gameObjects.trapDoor) {
       gameState.trapDoor = { ...levelData.gameObjects.trapDoor };
@@ -1105,8 +1112,8 @@ io.on('connection', socket => {
               }
             }
             
-            // For Level 1 cooperative puzzle, check fires array
-            if (currentLevel === 'level1' && Array.isArray(gameState.fires)) {
+            // Check fires array (used by both Level 1 and Level 2)
+            if (Array.isArray(gameState.fires)) {
               const fireAtPos = gameState.fires.find(
                 f => f.x === pos.x && f.y === pos.y && !f.isDoused
               );
@@ -1289,29 +1296,57 @@ io.on('connection', socket => {
         player.lastMoveDirection = direction; // Store direction for sprite flipping
 
         // === PRESSURE PLATE DETECTION LOGIC ===
-        if (gameState.pressurePlate) {
-          const wasPressed = gameState.pressurePlate.isPressed;
+        if (gameState.pressurePlates) {
+          let anyPlateActivated = false;
+          let plateActivationMessages = [];
           
-          // Check if any player is currently on the pressure plate
-          const playersOnPlate = Object.values(gameState.players).filter(
-            p => p.x === gameState.pressurePlate.x && p.y === gameState.pressurePlate.y
-          );
-          
-          gameState.pressurePlate.isPressed = playersOnPlate.length > 0;
+          // Check each pressure plate
+          gameState.pressurePlates.forEach((plate, index) => {
+            const wasPressed = plate.isPressed;
+            
+            // Check if any player is currently on this pressure plate
+            const playersOnPlate = Object.values(gameState.players).filter(
+              p => p.x === plate.x && p.y === plate.y
+            );
+            
+            plate.isPressed = playersOnPlate.length > 0;
+            if (plate.isPressed) anyPlateActivated = true;
+            
+            // If this plate's state changed, log it and prepare messages
+            if (wasPressed !== plate.isPressed) {
+              if (plate.isPressed) {
+                const playerOnPlate = playersOnPlate[0];
+                const playerIds = Object.keys(gameState.players);
+                const playerName = playerIds.indexOf(playerOnPlate === gameState.players[playerIds[0]] ? playerIds[0] : playerIds[1]) === 0 ? 'Player 1' : 'Player 2';
+                console.log(`🔘 PRESSURE PLATE ${index + 1} ACTIVATED by ${playerName} at (${plate.x}, ${plate.y})`);
+                
+                plateActivationMessages.push({
+                  message: `🔘 Pressure plate ${index + 1} activated by ${playerName}!`,
+                  isPressed: true
+                });
+              } else {
+                console.log(`⚪ PRESSURE PLATE ${index + 1} DEACTIVATED at (${plate.x}, ${plate.y})`);
+                
+                plateActivationMessages.push({
+                  message: `⚪ Pressure plate ${index + 1} deactivated`,
+                  isPressed: false
+                });
+              }
+            }
+          });
           
           // === TRAP STATE CHANGES ===
-          // Update trap state based on pressure plate activation
+          // Update trap state based on ANY pressure plate activation
           if (gameState.trapDoor) {
             const wasTrapOpen = gameState.trapDoor.isOpen;
             
-            // When pressure plate is pressed, trap opens (becomes safe to walk through)
-            // When pressure plate is not pressed, trap closes (becomes dangerous)
-            gameState.trapDoor.isOpen = gameState.pressurePlate.isPressed;
+            // Trap is open if ANY pressure plate is pressed
+            gameState.trapDoor.isOpen = anyPlateActivated;
             
             // Log trap state changes and notify clients
             if (wasTrapOpen !== gameState.trapDoor.isOpen) {
               if (gameState.trapDoor.isOpen) {
-                console.log(`🟢 TRAP DISABLED (safe to pass) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y})`);
+                console.log(`🟢 TRAP DISABLED (safe to pass) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y}) - ${anyPlateActivated ? 'pressure plate active' : 'no plates active'}`);
                 
                 // Notify all clients that trap is now safe
                 io.emit('trapStateMessage', {
@@ -1319,7 +1354,7 @@ io.on('connection', socket => {
                   isOpen: true
                 });
               } else {
-                console.log(`🔴 TRAP ACTIVATED (blocks movement) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y})`);
+                console.log(`🔴 TRAP ACTIVATED (blocks movement) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y}) - no pressure plates active`);
                 
                 // Notify all clients that trap is now dangerous
                 io.emit('trapStateMessage', {
@@ -1330,29 +1365,10 @@ io.on('connection', socket => {
             }
           }
           
-          // If pressure plate state changed, log it and notify clients
-          if (wasPressed !== gameState.pressurePlate.isPressed) {
-            if (gameState.pressurePlate.isPressed) {
-              const playerOnPlate = playersOnPlate[0];
-              const playerIds = Object.keys(gameState.players);
-              const playerName = playerIds.indexOf(playerOnPlate === gameState.players[playerIds[0]] ? playerIds[0] : playerIds[1]) === 0 ? 'Player 1' : 'Player 2';
-              console.log(`🔘 PRESSURE PLATE ACTIVATED by ${playerName} at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
-              
-              // Send message to all clients
-              io.emit('pressurePlateMessage', {
-                message: `🔘 Pressure plate activated by ${playerName}!`,
-                isPressed: true
-              });
-            } else {
-              console.log(`⚪ PRESSURE PLATE DEACTIVATED at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
-              
-              // Send message to all clients  
-              io.emit('pressurePlateMessage', {
-                message: `⚪ Pressure plate deactivated`,
-                isPressed: false
-              });
-            }
-          }
+          // Send pressure plate activation messages
+          plateActivationMessages.forEach(msg => {
+            io.emit('pressurePlateMessage', msg);
+          });
         }
 
         // === KEY PICKUP LOGIC ===
