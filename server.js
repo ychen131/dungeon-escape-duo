@@ -220,7 +220,7 @@ function detectContentBounds(layout) {
 // 0 = floor tile (walkable)
 // 1 = wall tile (not walkable)
 // 2 = fire hazard (requires "Douse Fire" item to pass)
-// 3 = chasm (requires "Build Bridge" item to pass)
+// 3 = chasm (impassable terrain)
 // 4 = exit tile (goal for both players)
 
 const LEVELS = {
@@ -290,8 +290,8 @@ const LEVELS = {
       },
       slimes: [
         {
-          x: 6,
-          y: 4, // Slime position based on the map analysis
+          x: 14,
+          y: 7, // Slime positioned 3 tiles up from trap (trap is at 14, 10)
           isStunned: false,
           stunDuration: 0,
         },
@@ -304,10 +304,10 @@ const LEVELS = {
     },
     // Level 2 uses door-based win condition (same as Level 1)
     winCondition: 'door',
-    // Different items for Level 2 - both players get different tools
+    // Both players get Douse Fire for cooperative mechanics
     playerItems: {
       player1: 'Douse Fire',
-      player2: 'Build Bridge',
+      player2: 'Douse Fire',
     },
   },
 };
@@ -322,7 +322,6 @@ let GRID_HEIGHT = 8;
 // Item types that players can receive
 const ITEM_TYPES = {
   DOUSE_FIRE: 'Douse Fire',
-  BUILD_BRIDGE: 'Build Bridge',
 };
 
 // Tile types for rendering and logic
@@ -814,6 +813,101 @@ function startGame() {
   }
 }
 
+// Slime AI Functions
+function calculateDistance(pos1, pos2) {
+  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y); // Manhattan distance
+}
+
+function findNearestPlayer(slime) {
+  const players = Object.values(gameState.players);
+  if (players.length === 0) return null;
+  
+  let nearestPlayer = players[0];
+  let minDistance = calculateDistance(slime, nearestPlayer);
+  
+  for (let i = 1; i < players.length; i++) {
+    const distance = calculateDistance(slime, players[i]);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestPlayer = players[i];
+    }
+  }
+  
+  return nearestPlayer;
+}
+
+function moveSlimeToward(slime, target) {
+  if (!target) return false;
+  
+  let newX = slime.x;
+  let newY = slime.y;
+  
+  // Move one step toward target (simple AI)
+  if (target.x > slime.x) newX++;
+  else if (target.x < slime.x) newX--;
+  else if (target.y > slime.y) newY++;
+  else if (target.y < slime.y) newY--;
+  
+  // Check if the new position is valid (within bounds and not a wall)
+  if (newX < 0 || newX >= gameState.gridWidth || newY < 0 || newY >= gameState.gridHeight) {
+    return false; // Out of bounds
+  }
+  
+  const targetTile = gameState.dungeonLayout[newY][newX];
+  if (targetTile === TILE_TYPES.WALL || targetTile === TILE_TYPES.FIRE_HAZARD || targetTile === TILE_TYPES.CHASM) {
+    return false; // Cannot move onto walls or hazards
+  }
+  
+  // Check if another slime is already at this position
+  if (gameState.slimes) {
+    const slimeAtTarget = gameState.slimes.find(s => s !== slime && s.x === newX && s.y === newY);
+    if (slimeAtTarget) {
+      return false; // Another slime is in the way
+    }
+  }
+  
+  // Check if a player is at this position (slimes don't move onto players directly)
+  const playerAtTarget = Object.values(gameState.players).find(p => p.x === newX && p.y === newY);
+  if (playerAtTarget) {
+    return false; // Player is in the way
+  }
+  
+  // Valid move - update slime position
+  slime.x = newX;
+  slime.y = newY;
+  console.log(`🟢 Slime moved to (${newX}, ${newY}) pursuing player`);
+  return true;
+}
+
+function updateSlimes() {
+  if (!gameState.slimes || gameState.slimes.length === 0) return;
+  
+  console.log('🟢 Updating slimes...');
+  
+  gameState.slimes.forEach((slime, index) => {
+    // Handle stun duration
+    if (slime.isStunned && slime.stunDuration > 0) {
+      slime.stunDuration--;
+      console.log(`🟢 Slime ${index} stunned for ${slime.stunDuration} more turns`);
+      
+      if (slime.stunDuration <= 0) {
+        slime.isStunned = false;
+        console.log(`🟢 Slime ${index} is no longer stunned`);
+      }
+      return; // Skip movement when stunned
+    }
+    
+    // Move toward nearest player
+    const nearestPlayer = findNearestPlayer(slime);
+    if (nearestPlayer) {
+      const moved = moveSlimeToward(slime, nearestPlayer);
+      if (!moved) {
+        console.log(`🟢 Slime ${index} could not move (blocked path)`);
+      }
+    }
+  });
+}
+
 // Helper function to switch turns and reset actions
 function switchTurn() {
   gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
@@ -821,6 +915,12 @@ function switchTurn() {
   console.log(
     `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
   );
+  
+  // Update slimes after turn switch
+  updateSlimes();
+  
+  // Broadcast updated game state after slime movement
+  broadcastCustomizedGameState();
 }
 
 // Initialize with Level 1 tilemap on server startup
@@ -985,6 +1085,26 @@ io.on('connection', socket => {
 
           // Check if item can be used on this tile
           if (item === ITEM_TYPES.DOUSE_FIRE) {
+            // Check for slimes at this position (slime stunning mechanic)
+            if (Array.isArray(gameState.slimes)) {
+              const slimeAtPos = gameState.slimes.find(
+                s => s.x === pos.x && s.y === pos.y && !s.isStunned
+              );
+              if (slimeAtPos) {
+                slimeAtPos.isStunned = true;
+                slimeAtPos.stunDuration = 3; // Stun for 3 turns
+                console.log(`${playerId} used ${item} to stun slime at (${pos.x}, ${pos.y}) for 3 turns`);
+                
+                // Send message to all clients about slime stunning
+                io.emit('slimeMessage', {
+                  message: `🟢 Slime stunned! Slime is immobilized for 3 turns.`,
+                  playerId: playerId
+                });
+                
+                itemUsed = true;
+              }
+            }
+            
             // For Level 1 cooperative puzzle, check fires array
             if (currentLevel === 'level1' && Array.isArray(gameState.fires)) {
               const fireAtPos = gameState.fires.find(
@@ -1001,13 +1121,6 @@ io.on('connection', socket => {
               console.log(`${playerId} used ${item} to douse fire at (${pos.x}, ${pos.y})`);
               itemUsed = true;
             }
-          } else if (item === ITEM_TYPES.BUILD_BRIDGE && tileType === TILE_TYPES.CHASM) {
-            // Fill chasm with bridge
-            gameState.dungeonLayout[pos.y][pos.x] = TILE_TYPES.FLOOR;
-            console.log(
-              `${playerId} used ${item} to build bridge over chasm at (${pos.x}, ${pos.y})`
-            );
-            itemUsed = true;
           }
         }
 

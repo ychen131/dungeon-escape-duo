@@ -55,10 +55,16 @@ interface GameState {
         y: number;
         isOpen: boolean;
     };
+    slimes?: Array<{
+        x: number;
+        y: number;
+        isStunned: boolean;
+        stunDuration: number;
+    }>;
 }
 
 export class GameScene extends Phaser.Scene {
-    private playerSprites: { [key: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text } = {};
+    private playerSprites: { [key: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text | Phaser.GameObjects.Arc } = {};
     private myPlayerId: string | null = null;
     private socket: any;
     private serverGameState: GameState | null = null;
@@ -480,6 +486,16 @@ export class GameScene extends Phaser.Scene {
             setTimeout(() => {
                 this.updateGameStatus(); // Restore normal status
             }, 4000);
+        });
+
+        this.socket.on('slimeMessage', (data: { message: string; playerId: string }) => {
+            console.log('Slime message:', data.message);
+            this.updateStatus(data.message, '#2ecc71', '16px', 'bold'); // Green for successful slime actions
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
         });
     }
 
@@ -980,6 +996,34 @@ export class GameScene extends Phaser.Scene {
             
             const trapState = this.serverGameState.trapDoor.isOpen ? 'open (safe)' : 'closed (dangerous)';
             console.log(`🚪 Rendered trap door (${trapState}) at (${this.serverGameState.trapDoor.x}, ${this.serverGameState.trapDoor.y})`);
+        }
+
+        // Draw the slimes
+        if (this.serverGameState.slimes) {
+            this.serverGameState.slimes.forEach((slime, index) => {
+                const coords = this.getTilePixelPosition(slime.x, slime.y);
+                
+                // Determine slime appearance based on state
+                let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
+                let slimeIcon = slime.isStunned ? '😵' : '🟢';
+                let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
+                
+                const slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
+                slimeCircle.setStrokeStyle(3, strokeColor);
+                slimeCircle.setDepth(90); // Above tiles but below players
+                this.playerSprites[`slime_${index}`] = slimeCircle;
+                
+                // Add slime label
+                const slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
+                    fontSize: '18px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                slimeLabel.setDepth(91);
+                this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                
+                const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                console.log(`🟢 Rendered slime ${index} (${slimeState}) at (${slime.x}, ${slime.y})`);
+            });
         }
     }
 
