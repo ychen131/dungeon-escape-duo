@@ -845,7 +845,7 @@ function startGame() {
 
 // Slime AI Functions
 function calculateDistance(pos1, pos2) {
-  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y); // Manhattan distance
+  return Math.max(Math.abs(pos1.x - pos2.x), Math.abs(pos1.y - pos2.y)); // Chebyshev distance (chess king movement)
 }
 
 function findNearestPlayer(slime) {
@@ -1378,37 +1378,59 @@ io.on('connection', socket => {
           });
           
           // === TRAP STATE CHANGES ===
-          // Update trap state based on ANY pressure plate activation
-          if (gameState.trapDoors) {
+          // Update trap state based on SPECIFIC pressure plate activation
+          if (gameState.trapDoors && gameState.pressurePlates) {
             let anyTrapStateChanged = false;
             
             gameState.trapDoors.forEach((trap, index) => {
               const wasTrapOpen = trap.isOpen;
+              let shouldBeOpen = false;
               
-              // All traps are open if ANY pressure plate is pressed
-              trap.isOpen = anyPlateActivated;
+              // Specific trap control logic:
+              if (index === 0) {
+                // Trap 1 (14, 10) - controlled by middle pressure plates (indices 0 and 1)
+                shouldBeOpen = gameState.pressurePlates[0].isPressed || gameState.pressurePlates[1].isPressed;
+              } else if (index === 1 || index === 2) {
+                // Trap 2 (17, 6) and Trap 3 (17, 7) - controlled by left pressure plate (index 2)
+                shouldBeOpen = gameState.pressurePlates[2].isPressed;
+              }
+              
+              trap.isOpen = shouldBeOpen;
               
               // Log trap state changes
               if (wasTrapOpen !== trap.isOpen) {
                 anyTrapStateChanged = true;
                 if (trap.isOpen) {
-                  console.log(`🟢 TRAP ${index + 1} DISABLED (safe to pass) at (${trap.x}, ${trap.y}) - pressure plate active`);
+                  console.log(`🟢 TRAP ${index + 1} DISABLED (safe to pass) at (${trap.x}, ${trap.y}) - specific pressure plate active`);
                 } else {
-                  console.log(`🔴 TRAP ${index + 1} ACTIVATED (blocks movement) at (${trap.x}, ${trap.y}) - no pressure plates active`);
+                  console.log(`🔴 TRAP ${index + 1} ACTIVATED (blocks movement) at (${trap.x}, ${trap.y}) - controlling pressure plate inactive`);
                 }
               }
             });
             
-            // Send unified message if any trap state changed
+            // Send specific messages if any trap state changed
             if (anyTrapStateChanged) {
-              if (anyPlateActivated) {
+              const middleTrapsOpen = gameState.trapDoors[0].isOpen;
+              const rightTrapsOpen = gameState.trapDoors[1].isOpen && gameState.trapDoors[2].isOpen;
+              
+              if (middleTrapsOpen && rightTrapsOpen) {
                 io.emit('trapStateMessage', {
-                  message: '🟢 All traps disabled! Paths are now safe to cross.',
+                  message: '🟢 All paths unlocked! Both chambers accessible.',
+                  isOpen: true
+                });
+              } else if (middleTrapsOpen) {
+                io.emit('trapStateMessage', {
+                  message: '🟢 Middle path unlocked! Right chamber still blocked.',
+                  isOpen: true
+                });
+              } else if (rightTrapsOpen) {
+                io.emit('trapStateMessage', {
+                  message: '🟢 Right chamber unlocked! Middle path still blocked.',
                   isOpen: true
                 });
               } else {
                 io.emit('trapStateMessage', {
-                  message: '🔴 All traps activated! Paths are now blocked.',
+                  message: '🔴 All paths blocked! Find the pressure plates.',
                   isOpen: false
                 });
               }
