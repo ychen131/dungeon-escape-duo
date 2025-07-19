@@ -50,11 +50,11 @@ interface GameState {
         y: number;
         isPressed: boolean;
     }>;
-    trapDoor?: {
+    trapDoors?: Array<{
         x: number;
         y: number;
         isOpen: boolean;
-    };
+    }>;
     slimes?: Array<{
         x: number;
         y: number;
@@ -979,30 +979,32 @@ export class GameScene extends Phaser.Scene {
             console.warn('⚠️ No pressure plates found in game state');
         }
 
-        // Draw the trap door
-        if (this.serverGameState.trapDoor) {
-            const coords = this.getTilePixelPosition(this.serverGameState.trapDoor.x, this.serverGameState.trapDoor.y);
-            
-            // Determine trap appearance based on state
-            let trapColor = this.serverGameState.trapDoor.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
-            let trapIcon = this.serverGameState.trapDoor.isOpen ? '✅' : '❌';
-            let strokeColor = this.serverGameState.trapDoor.isOpen ? 0x27ae60 : 0xc0392b;
-            
-            const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
-            trapRect.setStrokeStyle(4, strokeColor);
-            trapRect.setDepth(85); // Same depth as pressure plate
-            this.playerSprites['trap'] = trapRect;
-            
-            // Add trap label
-            const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
-                fontSize: '20px',
-                color: '#ffffff'
-            }).setOrigin(0.5);
-            trapLabel.setDepth(86);
-            this.playerSprites['trap_label'] = trapLabel;
-            
-            const trapState = this.serverGameState.trapDoor.isOpen ? 'open (safe)' : 'closed (dangerous)';
-            console.log(`🚪 Rendered trap door (${trapState}) at (${this.serverGameState.trapDoor.x}, ${this.serverGameState.trapDoor.y})`);
+        // Draw the trap doors
+        if (this.serverGameState.trapDoors) {
+            this.serverGameState.trapDoors.forEach((trap, index) => {
+                const coords = this.getTilePixelPosition(trap.x, trap.y);
+                
+                // Determine trap appearance based on state
+                let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
+                let trapIcon = trap.isOpen ? '✅' : '❌';
+                let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
+                
+                const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
+                trapRect.setStrokeStyle(4, strokeColor);
+                trapRect.setDepth(85); // Same depth as pressure plate
+                this.playerSprites[`trap_${index}`] = trapRect;
+                
+                // Add trap label
+                const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
+                    fontSize: '20px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                trapLabel.setDepth(86);
+                this.playerSprites[`trap_label_${index}`] = trapLabel;
+                
+                const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                console.log(`🚪 Rendered trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+            });
         }
 
         // Draw the slimes
