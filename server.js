@@ -284,8 +284,8 @@ const LEVELS = {
         isPressed: false,
       },
       trapDoor: {
-        x: 12,
-        y: 9, // Trap door area from analyzing the layout
+        x: 14,
+        y: 10, // Trap door area from analyzing the layout
         isOpen: false, // Closed by default, opens when pressure plate is pressed
       },
       slimes: [
@@ -1149,6 +1149,25 @@ io.on('connection', socket => {
           }
         }
 
+        // Check for active trap collision
+        if (gameState.trapDoor) {
+          if (newX === gameState.trapDoor.x && newY === gameState.trapDoor.y && !gameState.trapDoor.isOpen) {
+            console.log(
+              `Move blocked: ${playerId} tried to move onto active trap at (${newX}, ${newY}). Pressure plate must be activated first!`
+            );
+            
+            // Send message to player about the trap
+            const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
+            if (socket) {
+              socket.emit('trapMessage', {
+                message: '🔴 Trap blocks your path! Someone must stand on the pressure plate.',
+              });
+            }
+            
+            return; // Cannot move onto active trap
+          }
+        }
+
         // Exit tiles are walkable (no blocking needed)
 
         // Valid move - update player position and direction in game state
@@ -1160,18 +1179,43 @@ io.on('connection', socket => {
         if (gameState.pressurePlate) {
           const wasPressed = gameState.pressurePlate.isPressed;
           
-          // Debug logging
-          console.log(`🔍 DEBUG: Checking pressure plate at (${gameState.pressurePlate.x}, ${gameState.pressurePlate.y})`);
-          console.log(`🔍 DEBUG: Player ${playerId} moved to (${newX}, ${newY})`);
-          
           // Check if any player is currently on the pressure plate
           const playersOnPlate = Object.values(gameState.players).filter(
             p => p.x === gameState.pressurePlate.x && p.y === gameState.pressurePlate.y
           );
           
-          console.log(`🔍 DEBUG: Players on plate: ${playersOnPlate.length}`);
-          
           gameState.pressurePlate.isPressed = playersOnPlate.length > 0;
+          
+          // === TRAP STATE CHANGES ===
+          // Update trap state based on pressure plate activation
+          if (gameState.trapDoor) {
+            const wasTrapOpen = gameState.trapDoor.isOpen;
+            
+            // When pressure plate is pressed, trap opens (becomes safe to walk through)
+            // When pressure plate is not pressed, trap closes (becomes dangerous)
+            gameState.trapDoor.isOpen = gameState.pressurePlate.isPressed;
+            
+            // Log trap state changes and notify clients
+            if (wasTrapOpen !== gameState.trapDoor.isOpen) {
+              if (gameState.trapDoor.isOpen) {
+                console.log(`🟢 TRAP DISABLED (safe to pass) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y})`);
+                
+                // Notify all clients that trap is now safe
+                io.emit('trapStateMessage', {
+                  message: '🟢 Trap disabled! Path is now safe to cross.',
+                  isOpen: true
+                });
+              } else {
+                console.log(`🔴 TRAP ACTIVATED (blocks movement) at (${gameState.trapDoor.x}, ${gameState.trapDoor.y})`);
+                
+                // Notify all clients that trap is now dangerous
+                io.emit('trapStateMessage', {
+                  message: '🔴 Trap activated! Path is now blocked.',
+                  isOpen: false
+                });
+              }
+            }
+          }
           
           // If pressure plate state changed, log it and notify clients
           if (wasPressed !== gameState.pressurePlate.isPressed) {

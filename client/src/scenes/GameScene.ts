@@ -50,6 +50,11 @@ interface GameState {
         y: number;
         isPressed: boolean;
     };
+    trapDoor?: {
+        x: number;
+        y: number;
+        isOpen: boolean;
+    };
 }
 
 export class GameScene extends Phaser.Scene {
@@ -454,6 +459,27 @@ export class GameScene extends Phaser.Scene {
             setTimeout(() => {
                 this.updateGameStatus(); // Restore normal status
             }, 3000);
+        });
+
+        this.socket.on('trapMessage', (data: { message: string }) => {
+            console.log('Trap message:', data.message);
+            this.updateStatus(data.message, '#e74c3c', '16px', 'bold'); // Red for trap warnings
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 3000);
+        });
+
+        this.socket.on('trapStateMessage', (data: { message: string; isOpen: boolean }) => {
+            console.log('Trap state message:', data.message);
+            const color = data.isOpen ? '#2ecc71' : '#e74c3c'; // Green for safe, red for dangerous
+            this.updateStatus(data.message, color, '16px', 'bold');
+            
+            // Clear the message after 4 seconds (slightly longer for state changes)
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 4000);
         });
     }
 
@@ -928,6 +954,32 @@ export class GameScene extends Phaser.Scene {
             }
         } else {
             console.warn('⚠️ No pressure plate found in game state');
+        }
+
+        // Draw the trap door
+        if (this.serverGameState.trapDoor) {
+            const coords = this.getTilePixelPosition(this.serverGameState.trapDoor.x, this.serverGameState.trapDoor.y);
+            
+            // Determine trap appearance based on state
+            let trapColor = this.serverGameState.trapDoor.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
+            let trapIcon = this.serverGameState.trapDoor.isOpen ? '✅' : '❌';
+            let strokeColor = this.serverGameState.trapDoor.isOpen ? 0x27ae60 : 0xc0392b;
+            
+            const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
+            trapRect.setStrokeStyle(4, strokeColor);
+            trapRect.setDepth(85); // Same depth as pressure plate
+            this.playerSprites['trap'] = trapRect;
+            
+            // Add trap label
+            const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
+                fontSize: '20px',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            trapLabel.setDepth(86);
+            this.playerSprites['trap_label'] = trapLabel;
+            
+            const trapState = this.serverGameState.trapDoor.isOpen ? 'open (safe)' : 'closed (dangerous)';
+            console.log(`🚪 Rendered trap door (${trapState}) at (${this.serverGameState.trapDoor.x}, ${this.serverGameState.trapDoor.y})`);
         }
     }
 
