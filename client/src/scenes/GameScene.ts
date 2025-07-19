@@ -129,10 +129,46 @@ export class GameScene extends Phaser.Scene {
             frameHeight: 32, // 32px height
         });
 
+        // Load snail spritesheet - 144x192 pixels, 4 rows x 3 columns
+        console.log('🐌 Attempting to load snail spritesheet from snail.png');
+        this.load.spritesheet('snail', 'snail.png', {
+            frameWidth: 48, // 144px ÷ 3 columns = 48px per frame
+            frameHeight: 48, // 192px ÷ 4 rows = 48px per frame
+        });
+
+        // Load spike trap spritesheet - each frame is 32x32 pixels
+        console.log('🪤 Attempting to load spike trap spritesheet from Spike_Trap.png');
+        this.load.spritesheet('spikeTrap', 'Spike_Trap.png', {
+            frameWidth: 32, // Each frame is 32x32 pixels
+            frameHeight: 32
+        });
+
         
         // Add success logging for pressure plate loading
         this.load.on('filecomplete-spritesheet-pressurePlate', () => {
             console.log('✅ Pressure plate spritesheet loaded successfully');
+        });
+
+        // Add success logging for snail loading
+        this.load.on('filecomplete-spritesheet-snail', () => {
+            console.log('✅ Snail spritesheet loaded successfully');
+        });
+
+        // Add success logging for spike trap loading
+        this.load.on('filecomplete-spritesheet-spikeTrap', () => {
+            console.log('✅ Spike trap spritesheet loaded successfully');
+        });
+
+        // Add error logging for sprite loading
+        this.load.on('loaderror', (file: any) => {
+            if (file.key === 'snail') {
+                console.error(`❌ Failed to load snail sprite: ${file.key} from ${file.url}`);
+                console.error('Snail load error details:', file);
+            }
+            if (file.key === 'spikeTrap') {
+                console.error(`❌ Failed to load spike trap sprite: ${file.key} from ${file.url}`);
+                console.error('Spike trap load error details:', file);
+            }
         });
         
         // Keep loading individual tiles as backup for fallback mode
@@ -168,6 +204,11 @@ export class GameScene extends Phaser.Scene {
                 }
             });
         }
+        
+        // Debug: List all loaded textures
+        console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
+        console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
+        console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
         
         // Create character animations
         this.createCharacterAnimations();
@@ -419,6 +460,68 @@ export class GameScene extends Phaser.Scene {
             console.log('✅ Pressure plate animations created');
         } else {
             console.warn('⚠️ Pressure plate sprite sheet not loaded, skipping animations');
+        }
+
+        // Snail animations
+        console.log('🐌 Checking snail texture for animations. Exists?', this.textures.exists('snail'));
+        if (this.textures.exists('snail')) {
+            console.log('🎭 Creating snail animations...');
+            
+            // Calculate frame indices (3 columns per row)
+            // Row 2 (index 1) for left movement: frames 3, 4, 5
+            // Row 3 (index 2) for right movement: frames 6, 7, 8
+            
+            try {
+                this.anims.create({
+                    key: 'snail_move_left',
+                    frames: this.anims.generateFrameNumbers('snail', { start: 3, end: 5 }), // Row 2 frames
+                    frameRate: 4,
+                    repeat: -1 // Loop forever
+                });
+                
+                this.anims.create({
+                    key: 'snail_move_right',
+                    frames: this.anims.generateFrameNumbers('snail', { start: 6, end: 8 }), // Row 3 frames
+                    frameRate: 4,
+                    repeat: -1 // Loop forever
+                });
+                
+                console.log('✅ Snail animations created successfully');
+            } catch (error) {
+                console.error('❌ Error creating snail animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Snail sprite sheet not loaded, skipping animations');
+        }
+
+        // Spike Trap animations
+        console.log('🪤 Checking spike trap texture for animations. Exists?', this.textures.exists('spikeTrap'));
+        if (this.textures.exists('spikeTrap')) {
+            console.log('🎭 Creating spike trap animations...');
+            
+            try {
+                // Closed/safe state (trap is not dangerous)
+                this.anims.create({
+                    key: 'trap_closed',
+                    frames: [{ key: 'spikeTrap', frame: 0 }], // First frame - closed
+                    frameRate: 1,
+                    repeat: 0
+                });
+                
+                // Open/dangerous state (spikes are up)
+                this.anims.create({
+                    key: 'trap_open',
+                    frames: [{ key: 'spikeTrap', frame: 1 }], // Second frame - open/dangerous
+                    frameRate: 1,
+                    repeat: 0
+                });
+                
+                console.log('✅ Spike trap animations created successfully');
+            } catch (error) {
+                console.error('❌ Error creating spike trap animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Spike trap sprite sheet not loaded, skipping animations');
         }
     }
 
@@ -765,6 +868,10 @@ export class GameScene extends Phaser.Scene {
         for (const spriteKey of Object.keys(this.playerSprites)) {
             if (spriteKey.endsWith('_label')) continue;
             
+            // Skip non-player entities (snail, slimes, traps, etc.)
+            if (spriteKey === 'snail' || spriteKey === 'snail_label' || 
+                spriteKey.startsWith('slime_') || spriteKey.startsWith('trap_')) continue;
+            
             const playerId = spriteKey;
             if (!this.serverGameState.players[playerId]) {
                 if (this.playerSprites[playerId]) {
@@ -1003,26 +1110,59 @@ export class GameScene extends Phaser.Scene {
             this.serverGameState.trapDoors.forEach((trap, index) => {
                 const coords = this.getTilePixelPosition(trap.x, trap.y);
                 
-                // Determine trap appearance based on state
-                let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
-                let trapIcon = trap.isOpen ? '✅' : '❌';
-                let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
-                
-                const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
-                trapRect.setStrokeStyle(4, strokeColor);
-                trapRect.setDepth(85); // Same depth as pressure plate
-                this.playerSprites[`trap_${index}`] = trapRect;
-                
-                // Add trap label
-                const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
-                    fontSize: '20px',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
-                trapLabel.setDepth(86);
-                this.playerSprites[`trap_label_${index}`] = trapLabel;
-                
-                const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
-                console.log(`🚪 Rendered trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                // Create or update animated spike trap sprite
+                if (this.textures.exists('spikeTrap')) {
+                    console.log('✅ Spike trap texture exists, creating sprite for trap', index + 1);
+                    
+                    let trapSprite = this.playerSprites[`trap_${index}`] as Phaser.GameObjects.Sprite;
+                    
+                    // If trap sprite doesn't exist or is wrong type, create it
+                    if (!trapSprite || !(trapSprite instanceof Phaser.GameObjects.Sprite) || trapSprite.texture.key !== 'spikeTrap') {
+                        trapSprite = this.add.sprite(coords.x, coords.y, 'spikeTrap');
+                        trapSprite.setOrigin(0.5);
+                        trapSprite.setScale(1.5); // Scale up slightly for better visibility
+                        trapSprite.setDepth(85); // Same depth as pressure plate
+                        this.playerSprites[`trap_${index}`] = trapSprite;
+                    } else {
+                        // Update existing sprite position
+                        trapSprite.setPosition(coords.x, coords.y);
+                    }
+                    
+                    // Play appropriate animation based on trap state
+                    // trap.isOpen = true (safe) → spikes down → 'trap_closed'
+                    // trap.isOpen = false (dangerous) → spikes up → 'trap_open'
+                    const targetAnimation = trap.isOpen ? 'trap_closed' : 'trap_open';
+                    if (!trapSprite.anims.currentAnim || trapSprite.anims.currentAnim.key !== targetAnimation) {
+                        trapSprite.play(targetAnimation);
+                    }
+                    
+                    const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                    console.log(`🪤 Rendered animated spike trap ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                } else {
+                    // Fallback to rectangle if spike trap sprite not available
+                    console.log('⚠️ Spike trap texture not found, using fallback for trap', index + 1);
+                    
+                    // Determine trap appearance based on state
+                    let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
+                    let trapIcon = trap.isOpen ? '✅' : '❌';
+                    let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
+                    
+                    const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
+                    trapRect.setStrokeStyle(4, strokeColor);
+                    trapRect.setDepth(85);
+                    this.playerSprites[`trap_${index}`] = trapRect;
+                    
+                    // Add trap label
+                    const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
+                        fontSize: '20px',
+                        color: '#ffffff'
+                    }).setOrigin(0.5);
+                    trapLabel.setDepth(86);
+                    this.playerSprites[`trap_label_${index}`] = trapLabel;
+                    
+                    const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                    console.log(`🚪 Rendered fallback trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                }
             });
         }
 
@@ -1059,25 +1199,52 @@ export class GameScene extends Phaser.Scene {
             console.log('🐌 Client: Rendering snail at', this.serverGameState.snail);
             const coords = this.getTilePixelPosition(this.serverGameState.snail.x, this.serverGameState.snail.y);
             
-            // Snail appearance - friendly orange color
-            const snailColor = 0xf39c12; // Orange
-            const snailIcon = '🐌';
-            const strokeColor = 0xe67e22;
-            
-            const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
-            snailCircle.setStrokeStyle(2, strokeColor);
-            snailCircle.setDepth(89); // Above tiles, below players and other entities
-            this.playerSprites['snail'] = snailCircle;
-            
-            // Add snail label
-            const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
-                fontSize: '16px',
-                color: '#ffffff'
-            }).setOrigin(0.5);
-            snailLabel.setDepth(90);
-            this.playerSprites['snail_label'] = snailLabel;
-            
-            console.log(`🐌 Rendered snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
+            // Create or update animated snail sprite
+            if (this.textures.exists('snail')) {
+                console.log('✅ Snail texture exists, creating sprite');
+                
+                let snailSprite = this.playerSprites['snail'] as Phaser.GameObjects.Sprite;
+                
+                // If snail sprite doesn't exist or is wrong type, create it
+                if (!snailSprite || !(snailSprite instanceof Phaser.GameObjects.Sprite) || snailSprite.texture.key !== 'snail') {
+                    snailSprite = this.add.sprite(coords.x, coords.y, 'snail');
+                    snailSprite.setOrigin(0.5);
+                    snailSprite.setScale(1.0); // Adjust scale as needed
+                    snailSprite.setDepth(89); // Above tiles, below players and other entities
+                    this.playerSprites['snail'] = snailSprite;
+                } else {
+                    // Update existing sprite position
+                    snailSprite.setPosition(coords.x, coords.y);
+                }
+                
+                // Play appropriate animation based on direction
+                const targetAnimation = this.serverGameState.snail.direction === -1 ? 'snail_move_left' : 'snail_move_right';
+                if (!snailSprite.anims.currentAnim || snailSprite.anims.currentAnim.key !== targetAnimation) {
+                    snailSprite.play(targetAnimation);
+                }
+                
+                console.log(`🐌 Rendered animated snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) moving ${this.serverGameState.snail.direction === -1 ? 'left' : 'right'}`);
+            } else {
+                // Fallback to orange circle if sprite not available
+                console.log('⚠️ Snail texture not found, using fallback orange circle');
+                const snailColor = 0xf39c12; // Orange
+                const snailIcon = '🐌';
+                const strokeColor = 0xe67e22;
+                
+                const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
+                snailCircle.setStrokeStyle(2, strokeColor);
+                snailCircle.setDepth(89);
+                this.playerSprites['snail'] = snailCircle;
+                
+                const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
+                    fontSize: '16px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                snailLabel.setDepth(90);
+                this.playerSprites['snail_label'] = snailLabel;
+                
+                console.log(`🐌 Rendered fallback snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
+            }
         }
     }
 
