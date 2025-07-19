@@ -1017,25 +1017,33 @@ function updateSnail() {
   const players = Object.values(gameState.players);
   const playersNearSnail = players.filter(player => {
     const distance = calculateDistance(gameState.snail, player);
+    console.log(`🐌 Distance check: Player at (${player.x}, ${player.y}), Snail at (${gameState.snail.x}, ${gameState.snail.y}), Distance: ${distance}`);
     return distance <= 1; // Player must be adjacent to snail
   });
 
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
-    const currentTurn = gameState.currentPlayerTurn === 'player1' ? 1 : 2;
-    if (gameState.snail.lastInteractionTurn !== currentTurn) {
-      const messages = ['Good Day, crawler.', 'Where is my key....'];
+    console.log(`🐌 ${playersNearSnail.length} player(s) near snail!`);
+    
+    // Use timestamp-based cooldown instead of turn-based (5 seconds cooldown)
+    const now = Date.now();
+    if (!gameState.snail.lastInteractionTime || (now - gameState.snail.lastInteractionTime) > 5000) {
+      const messages = ['Good Day, crawler.', 'Where is my key....', 'Have you seen any shiny objects?', 'The walls here are quite damp.'];
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
       console.log(`🐌 Snail says: "${randomMessage}"`);
 
       // Send message to all clients
-      io.emit('snailMessage', {
+      const messageData = {
         message: `🐌 Snail: "${randomMessage}"`,
         snailPos: { x: gameState.snail.x, y: gameState.snail.y },
-      });
+      };
+      console.log('🐌 EMITTING snailMessage event to all clients:', messageData);
+      io.emit('snailMessage', messageData);
 
-      gameState.snail.lastInteractionTurn = currentTurn;
+      gameState.snail.lastInteractionTime = now;
+    } else {
+      console.log(`🐌 Snail interaction on cooldown (${5 - Math.floor((now - gameState.snail.lastInteractionTime) / 1000)} seconds left)`);
     }
   }
 

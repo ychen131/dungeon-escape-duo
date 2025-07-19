@@ -78,6 +78,7 @@ export class GameScene extends Phaser.Scene {
     private socket: any;
     private serverGameState: GameState | null = null;
     private connectionRejected: boolean = false;
+    private snailMessageActive: boolean = false; // Track if snail message is currently displayed
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
@@ -266,10 +267,7 @@ export class GameScene extends Phaser.Scene {
         this.socket = (window as any).io(serverUrl);
         
         // Expose socket globally for testing
-                  (window as any).socket = this.socket;
-          console.log('🧪 Exposed socket to window for testing');
-          console.log('🔄 Use: socket.emit("resetPositions") to reset player positions');
-                  
+        (window as any).socket = this.socket;
         
         // Set up socket event listeners
         this.setupSocketListeners();
@@ -703,11 +701,16 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
-            console.log('Snail message:', data.message);
+            console.log('🐌 RECEIVED SNAIL MESSAGE:', data.message);
+            console.log('🐌 Snail position:', data.snailPos);
+            
+            // Set flag to prevent overwriting snail message
+            this.snailMessageActive = true;
             this.updateStatus(data.message, '#f39c12', '16px', 'normal'); // Orange for snail interactions
             
             // Clear the message after 4 seconds (slightly longer for NPC dialogue)
             setTimeout(() => {
+                this.snailMessageActive = false;
                 this.updateGameStatus(); // Restore normal status
             }, 4000);
         });
@@ -751,6 +754,12 @@ export class GameScene extends Phaser.Scene {
 
     private updateGameStatus() {
         if (!this.serverGameState) return;
+        
+        // Don't overwrite snail messages while they're being displayed
+        if (this.snailMessageActive) {
+            console.log('🐌 Snail message active, skipping status update');
+            return;
+        }
 
         const playerCount = Object.keys(this.serverGameState.players).length;
         
