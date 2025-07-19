@@ -318,12 +318,14 @@ const LEVELS = {
           y: 6, // First slime - left side of map
           isStunned: false,
           stunDuration: 0,
+          lastMoveDirection: null, // Track direction for sprite flipping
         },
         {
           x: 18,
           y: 8, // Second slime - right side of map
           isStunned: false,
           stunDuration: 0,
+          lastMoveDirection: null, // Track direction for sprite flipping
         },
       ],
       snail: {
@@ -903,14 +905,19 @@ function moveSlimeToward(slime, target) {
   let newY = slime.y;
 
   // Move one step toward target (simple AI)
+  let moveDirection = null;
   if (target.x > slime.x) {
     newX++;
+    moveDirection = 'right';
   } else if (target.x < slime.x) {
     newX--;
+    moveDirection = 'left';
   } else if (target.y > slime.y) {
     newY++;
+    moveDirection = 'down';
   } else if (target.y < slime.y) {
     newY--;
+    moveDirection = 'up';
   }
 
   // Check if the new position is valid (within bounds and not a wall)
@@ -941,10 +948,11 @@ function moveSlimeToward(slime, target) {
     return false; // Player is in the way
   }
 
-  // Valid move - update slime position
+  // Valid move - update slime position and direction
   slime.x = newX;
   slime.y = newY;
-  console.log(`🟢 Slime moved to (${newX}, ${newY}) pursuing player`);
+  slime.lastMoveDirection = moveDirection; // Store direction for sprite flipping
+  console.log(`🟢 Slime moved to (${newX}, ${newY}) facing ${moveDirection} pursuing player`);
   return true;
 }
 

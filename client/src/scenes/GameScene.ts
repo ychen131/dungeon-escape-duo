@@ -60,6 +60,7 @@ interface GameState {
         y: number;
         isStunned: boolean;
         stunDuration: number;
+        lastMoveDirection?: string;
     }>;
     snail?: {
         x: number;
@@ -156,6 +157,12 @@ export class GameScene extends Phaser.Scene {
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
 
+        console.log('🟢 Attempting to load slime jump spritesheet from slime_jump.png');
+        this.load.spritesheet('slimeJump', 'slime_jump.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
         
         // Add success logging for pressure plate loading
         this.load.on('filecomplete-spritesheet-pressurePlate', () => {
@@ -179,6 +186,10 @@ export class GameScene extends Phaser.Scene {
 
         this.load.on('filecomplete-spritesheet-slimeMove', () => {
             console.log('✅ Slime movement spritesheet loaded successfully');
+        });
+
+        this.load.on('filecomplete-spritesheet-slimeJump', () => {
+            console.log('✅ Slime jump spritesheet loaded successfully');
         });
 
         // Add error logging for sprite loading
@@ -235,8 +246,9 @@ export class GameScene extends Phaser.Scene {
         console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
         console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
         console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
-        console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
-        console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
+                  console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
+          console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
+          console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
         
         // Create character animations
         this.createCharacterAnimations();
@@ -553,8 +565,8 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Slime animations
-        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'));
-        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
+        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'), 'Jump exists?', this.textures.exists('slimeJump'));
+        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove') && this.textures.exists('slimeJump')) {
             console.log('🎭 Creating slime animations...');
             
             try {
@@ -578,6 +590,16 @@ export class GameScene extends Phaser.Scene {
                     frameRate: 8,
                     repeat: -1 // Loop forever
                 });
+
+                // Jump animation - 5th row (green slime) from jump spritesheet
+                this.anims.create({
+                    key: 'slime_jump',
+                    frames: this.anims.generateFrameNumbers('slimeJump', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 8, // Normal frame rate
+                    repeat: 0 // Play once
+                });
+                console.log(`✅ Slime jump animation created - frames ${greenSlimeRowStart} to ${greenSlimeRowEnd} from slimeJump texture (5th row, all 7 frames)`);
+                console.log(`🔍 ANIMATION SETUP: IDLE=5th row (${greenSlimeRowStart}-${greenSlimeRowEnd}) from slime_idle.png | JUMP=5th row (${greenSlimeRowStart}-${greenSlimeRowEnd}) from slime_jump.png`);
                 
                 // Stunned animation - static first frame from idle
                 this.anims.create({
@@ -587,7 +609,7 @@ export class GameScene extends Phaser.Scene {
                     repeat: 0
                 });
                 
-                console.log('✅ Slime animations created successfully - idle, move, and stunned (green slime row 5)');
+                console.log('✅ Slime animations created successfully - idle, move, jump, and stunned (green slime row 5)');
             } catch (error) {
                 console.error('❌ Error creating slime animations:', error);
             }
@@ -1274,12 +1296,19 @@ export class GameScene extends Phaser.Scene {
                     
                     // If slime sprite doesn't exist or is wrong type, create it
                     if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
-                        (slimeSprite.texture.key !== 'slimeIdle' && slimeSprite.texture.key !== 'slimeMove')) {
+                        (slimeSprite.texture.key !== 'slimeIdle' && slimeSprite.texture.key !== 'slimeMove' && slimeSprite.texture.key !== 'slimeJump')) {
                         slimeSprite = this.add.sprite(coords.x, coords.y, 'slimeIdle');
                         slimeSprite.setOrigin(0.5, 0.5);
-                        slimeSprite.setScale(0.8); // Scale down to fit nicely in tiles
+                        slimeSprite.setScale(1.3); // Scale up for better visibility
                         slimeSprite.setDepth(90); // Above tiles but below players
                         this.playerSprites[`slime_${index}`] = slimeSprite;
+                        
+                        // Initialize position tracking for jump detection
+                        // Use impossible coordinates to ensure first movement is detected
+                        (slimeSprite as any).lastTileX = -999;
+                        (slimeSprite as any).lastTileY = -999;
+                        (slimeSprite as any).isJumping = false;
+                        (slimeSprite as any).lastServerUpdate = 'initial'; // Track server updates
                         
                         console.log(`🟢 Created slime sprite at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
                         
@@ -1292,11 +1321,99 @@ export class GameScene extends Phaser.Scene {
                         slimeSprite.setPosition(coords.x, coords.y);
                     }
                     
-                    // Play appropriate animation based on slime state
-                    const targetAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
-                    if (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation) {
+                    // Check if slime position changed (jumping between tiles)
+                    const oldTileX = (slimeSprite as any).lastTileX;
+                    const oldTileY = (slimeSprite as any).lastTileY;
+                    const positionChanged = (oldTileX !== slime.x || oldTileY !== slime.y);
+                    
+                    // Create unique update identifier to prevent duplicate processing
+                    const currentUpdateId = `${slime.x},${slime.y},${slime.isStunned ? 'stunned' : 'active'}`;
+                    const lastUpdateId = (slimeSprite as any).lastServerUpdate;
+                    const isNewUpdate = currentUpdateId !== lastUpdateId;
+                    
+                    // Only log when movement is detected to reduce noise
+                    if (positionChanged && isNewUpdate) {
+                        console.log(`🔍 Slime ${index} DETECTED MOVEMENT: (${oldTileX}, ${oldTileY}) → (${slime.x}, ${slime.y})`);
+                    }
+                    
+                    // Only log when there's actual movement
+                    if (positionChanged && isNewUpdate) {
+                        console.log(`🟢 Slime ${index} MOVED: old(${oldTileX},${oldTileY}) -> new(${slime.x},${slime.y})`);
+                    }
+                    
+                    // Only update stored position if this is a new server update
+                    if (isNewUpdate) {
+                        (slimeSprite as any).lastTileX = slime.x;
+                        (slimeSprite as any).lastTileY = slime.y;
+                        (slimeSprite as any).lastServerUpdate = currentUpdateId;
+                    }
+                    
+                    // Determine animation based on slime state and movement
+                    let targetAnimation: string = 'slime_idle'; // Default to idle
+                    if (slime.isStunned) {
+                        targetAnimation = 'slime_stunned';
+                        (slimeSprite as any).isJumping = false;
+
+                    } else if (positionChanged && isNewUpdate && !(slimeSprite as any).isJumping) {
+                        // Slime just moved in a NEW server update - play jump animation
+                        console.log(`🦘 JUMP TRIGGERED for Slime ${index}!`);
+                        targetAnimation = 'slime_jump';
+                        (slimeSprite as any).isJumping = true;
+                        console.log(`🟢 Slime ${index} JUMPING! New position in server update, playing jump animation`);
+                        
+                        // Add visual bounce effect for more noticeable jump
+                        const originalScale = slimeSprite.scaleX;
+                        this.tweens.add({
+                            targets: slimeSprite,
+                            scaleX: originalScale * 1.2,
+                            scaleY: originalScale * 1.2,
+                            duration: 200,
+                            yoyo: true,
+                            ease: 'Power2'
+                        });
+                        
+                        // After jump animation completes, return to idle
+                        if ((slimeSprite as any).jumpTimeout) {
+                            clearTimeout((slimeSprite as any).jumpTimeout);
+                        }
+                        
+                        (slimeSprite as any).jumpTimeout = setTimeout(() => {
+                            if (slimeSprite && slimeSprite.active) {
+                                // Always reset jumping state regardless of stunned status
+                                (slimeSprite as any).isJumping = false;
+                                (slimeSprite as any).jumpTimeout = null;
+                                
+                                // Only play idle if not stunned
+                                if (!slime.isStunned) {
+                                    slimeSprite.play('slime_idle');
+                                }
+                                console.log(`🟢 Slime ${index} jump completed, returning to idle`);
+                            }
+                        }, 875); // Animation duration (7 frames at 8 FPS = ~875ms)
+                    } else if (!(slimeSprite as any).isJumping) {
+                        // Default idle state (already set above)
+                        targetAnimation = 'slime_idle';
+                    }
+                    
+                    // Play animation if it's different from current or we need to start a new jump
+                    if (targetAnimation && (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation)) {
                         slimeSprite.play(targetAnimation);
-                        console.log(`🟢 Playing ${targetAnimation} animation for slime ${index + 1}`);
+                        if (targetAnimation === 'slime_jump') {
+                            console.log(`🦘 SLIME ${index + 1} NOW PLAYING JUMP ANIMATION (5th row frames 28-34 from slimeJump.png)!`);
+                        }
+                    }
+                    
+                    // Handle sprite flipping based on movement direction (like players)
+                    if (slime.lastMoveDirection) {
+                        switch (slime.lastMoveDirection) {
+                            case 'left':
+                                slimeSprite.setFlipX(true);
+                                break;
+                            case 'right':
+                                slimeSprite.setFlipX(false);
+                                break;
+                            // For up/down movement, keep the current flip state
+                        }
                     }
                     
                     const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
