@@ -143,6 +143,19 @@ export class GameScene extends Phaser.Scene {
             frameHeight: 32
         });
 
+        // Load slime spritesheets - 560x504 pixels, 7 rows x 7 columns
+        console.log('🟢 Attempting to load slime idle spritesheet from slime_idle.png');
+        this.load.spritesheet('slimeIdle', 'slime_idle.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
+        console.log('🟢 Attempting to load slime movement spritesheet from slime_move.png');
+        this.load.spritesheet('slimeMove', 'slime_move.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
         
         // Add success logging for pressure plate loading
         this.load.on('filecomplete-spritesheet-pressurePlate', () => {
@@ -159,6 +172,15 @@ export class GameScene extends Phaser.Scene {
             console.log('✅ Spike trap spritesheet loaded successfully');
         });
 
+        // Add success logging for slime loading
+        this.load.on('filecomplete-spritesheet-slimeIdle', () => {
+            console.log('✅ Slime idle spritesheet loaded successfully');
+        });
+
+        this.load.on('filecomplete-spritesheet-slimeMove', () => {
+            console.log('✅ Slime movement spritesheet loaded successfully');
+        });
+
         // Add error logging for sprite loading
         this.load.on('loaderror', (file: any) => {
             if (file.key === 'snail') {
@@ -168,6 +190,10 @@ export class GameScene extends Phaser.Scene {
             if (file.key === 'spikeTrap') {
                 console.error(`❌ Failed to load spike trap sprite: ${file.key} from ${file.url}`);
                 console.error('Spike trap load error details:', file);
+            }
+            if (file.key === 'slimeIdle' || file.key === 'slimeMove') {
+                console.error(`❌ Failed to load slime sprite: ${file.key} from ${file.url}`);
+                console.error('Slime load error details:', file);
             }
         });
         
@@ -209,6 +235,8 @@ export class GameScene extends Phaser.Scene {
         console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
         console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
         console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
+        console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
+        console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
         
         // Create character animations
         this.createCharacterAnimations();
@@ -500,28 +528,71 @@ export class GameScene extends Phaser.Scene {
             console.log('🎭 Creating spike trap animations...');
             
             try {
-                // Closed/safe state (trap is not dangerous)
+                // Safe state - spikes down (static frame 0)
                 this.anims.create({
-                    key: 'trap_closed',
-                    frames: [{ key: 'spikeTrap', frame: 0 }], // First frame - closed
+                    key: 'trap_safe',
+                    frames: [{ key: 'spikeTrap', frame: 0 }], // First frame - spikes down/safe
                     frameRate: 1,
                     repeat: 0
                 });
                 
-                // Open/dangerous state (spikes are up)
+                // Dangerous state - animated spikes (loop through all 14 frames)
                 this.anims.create({
-                    key: 'trap_open',
-                    frames: [{ key: 'spikeTrap', frame: 1 }], // Second frame - open/dangerous
-                    frameRate: 1,
-                    repeat: 0
+                    key: 'trap_dangerous',
+                    frames: this.anims.generateFrameNumbers('spikeTrap', { start: 0, end: 13 }), // All 14 frames (0-13)
+                    frameRate: 8, // 8 FPS for smooth animation
+                    repeat: -1 // Loop forever
                 });
                 
-                console.log('✅ Spike trap animations created successfully');
+                console.log('✅ Spike trap animations created successfully - safe (static) and dangerous (14-frame loop)');
             } catch (error) {
                 console.error('❌ Error creating spike trap animations:', error);
             }
         } else {
             console.warn('⚠️ Spike trap sprite sheet not loaded, skipping animations');
+        }
+
+        // Slime animations
+        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'));
+        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
+            console.log('🎭 Creating slime animations...');
+            
+            try {
+                // Calculate frame indices for 5th row (green slime)
+                // 7x7 grid, 5th row = row index 4, frames 28-34
+                const greenSlimeRowStart = 4 * 7; // Row 5 (index 4) × 7 columns = frame 28
+                const greenSlimeRowEnd = greenSlimeRowStart + 6; // frames 28-34 (7 frames)
+                
+                // Idle animation - green slime row from idle spritesheet
+                this.anims.create({
+                    key: 'slime_idle',
+                    frames: this.anims.generateFrameNumbers('slimeIdle', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 6,
+                    repeat: -1 // Loop forever
+                });
+                
+                // Movement animation - green slime row from movement spritesheet
+                this.anims.create({
+                    key: 'slime_move',
+                    frames: this.anims.generateFrameNumbers('slimeMove', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 8,
+                    repeat: -1 // Loop forever
+                });
+                
+                // Stunned animation - static first frame from idle
+                this.anims.create({
+                    key: 'slime_stunned',
+                    frames: [{ key: 'slimeIdle', frame: greenSlimeRowStart }], // First frame of green slime row
+                    frameRate: 1,
+                    repeat: 0
+                });
+                
+                console.log('✅ Slime animations created successfully - idle, move, and stunned (green slime row 5)');
+            } catch (error) {
+                console.error('❌ Error creating slime animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Slime sprite sheets not loaded, skipping animations');
         }
     }
 
@@ -1125,18 +1196,24 @@ export class GameScene extends Phaser.Scene {
                         this.playerSprites[`trap_${index}`] = trapSprite;
                         
                         console.log(`🪤 Created trap sprite at tile (${trap.x}, ${trap.y}) = pixel (${coords.x}, ${coords.y}), tileSize: ${coords.tileSize}`);
+                        
+                        // Start with the appropriate animation for initial state
+                        const initialAnimation = trap.isOpen ? 'trap_safe' : 'trap_dangerous';
+                        trapSprite.play(initialAnimation);
+                        console.log(`🪤 Started initial ${initialAnimation} animation for new trap ${index + 1}`);
                     } else {
                         // Update existing sprite position
                         trapSprite.setPosition(coords.x, coords.y);
-                        trapSprite.setOrigin(0.5, 0.5); // Ensure origin stays centered
+                        trapSprite.setOrigin(0.6, 0.6); // Ensure origin stays centered (match creation origin)
                     }
                     
                     // Play appropriate animation based on trap state
-                    // trap.isOpen = true (safe) → spikes down → 'trap_closed'
-                    // trap.isOpen = false (dangerous) → spikes up → 'trap_open'
-                    const targetAnimation = trap.isOpen ? 'trap_closed' : 'trap_open';
+                    // trap.isOpen = true (safe) → static spikes down → 'trap_safe'
+                    // trap.isOpen = false (dangerous) → animated spikes → 'trap_dangerous'
+                    const targetAnimation = trap.isOpen ? 'trap_safe' : 'trap_dangerous';
                     if (!trapSprite.anims.currentAnim || trapSprite.anims.currentAnim.key !== targetAnimation) {
                         trapSprite.play(targetAnimation);
+                        console.log(`🪤 Playing ${targetAnimation} animation for trap ${index + 1}`);
                     }
                     
                     const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
@@ -1171,29 +1248,97 @@ export class GameScene extends Phaser.Scene {
 
         // Draw the slimes
         if (this.serverGameState.slimes) {
+            // Clean up any extra slime sprites if the count decreased
+            const currentSlimeCount = this.serverGameState.slimes.length;
+            let slimeIndex = currentSlimeCount;
+            while (this.playerSprites[`slime_${slimeIndex}`]) {
+                if (this.playerSprites[`slime_${slimeIndex}`]) {
+                    (this.playerSprites[`slime_${slimeIndex}`] as any).destroy();
+                    delete this.playerSprites[`slime_${slimeIndex}`];
+                }
+                if (this.playerSprites[`slime_${slimeIndex}_label`]) {
+                    (this.playerSprites[`slime_${slimeIndex}_label`] as any).destroy();
+                    delete this.playerSprites[`slime_${slimeIndex}_label`];
+                }
+                slimeIndex++;
+            }
+            
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
-                // Determine slime appearance based on state
-                let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
-                let slimeIcon = slime.isStunned ? '😵' : '🟢';
-                let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
-                
-                const slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
-                slimeCircle.setStrokeStyle(3, strokeColor);
-                slimeCircle.setDepth(90); // Above tiles but below players
-                this.playerSprites[`slime_${index}`] = slimeCircle;
-                
-                // Add slime label
-                const slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
-                    fontSize: '18px',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
-                slimeLabel.setDepth(91);
-                this.playerSprites[`slime_${index}_label`] = slimeLabel;
-                
-                const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
-                console.log(`🟢 Rendered slime ${index} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                // Create or update animated slime sprite
+                if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
+                    console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
+                    
+                    let slimeSprite = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Sprite;
+                    
+                    // If slime sprite doesn't exist or is wrong type, create it
+                    if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
+                        (slimeSprite.texture.key !== 'slimeIdle' && slimeSprite.texture.key !== 'slimeMove')) {
+                        slimeSprite = this.add.sprite(coords.x, coords.y, 'slimeIdle');
+                        slimeSprite.setOrigin(0.5, 0.5);
+                        slimeSprite.setScale(0.8); // Scale down to fit nicely in tiles
+                        slimeSprite.setDepth(90); // Above tiles but below players
+                        this.playerSprites[`slime_${index}`] = slimeSprite;
+                        
+                        console.log(`🟢 Created slime sprite at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
+                        
+                        // Start with the appropriate animation for initial state
+                        const initialAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
+                        slimeSprite.play(initialAnimation);
+                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${index + 1}`);
+                    } else {
+                        // Update existing sprite position
+                        slimeSprite.setPosition(coords.x, coords.y);
+                    }
+                    
+                    // Play appropriate animation based on slime state
+                    const targetAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
+                    if (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation) {
+                        slimeSprite.play(targetAnimation);
+                        console.log(`🟢 Playing ${targetAnimation} animation for slime ${index + 1}`);
+                    }
+                    
+                    const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                    console.log(`🟢 Rendered animated slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                } else {
+                    // Fallback to circles if slime sprites not available
+                    console.log('⚠️ Slime textures not found, using fallback for slime', index + 1);
+                    
+                    let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
+                    let slimeIcon = slime.isStunned ? '😵' : '🟢';
+                    let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
+                    
+                    // Create or update slime circle (fallback)
+                    let slimeCircle = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Arc;
+                    let slimeLabel = this.playerSprites[`slime_${index}_label`] as Phaser.GameObjects.Text;
+                    
+                    if (!slimeCircle || !(slimeCircle instanceof Phaser.GameObjects.Arc)) {
+                        slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
+                        slimeCircle.setStrokeStyle(3, strokeColor);
+                        slimeCircle.setDepth(90);
+                        this.playerSprites[`slime_${index}`] = slimeCircle;
+                    } else {
+                        slimeCircle.setPosition(coords.x, coords.y);
+                        slimeCircle.setFillStyle(slimeColor);
+                        slimeCircle.setStrokeStyle(3, strokeColor);
+                    }
+                    
+                    if (!slimeLabel || !(slimeLabel instanceof Phaser.GameObjects.Text)) {
+                        slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
+                            fontSize: '18px',
+                            color: '#ffffff'
+                        }).setOrigin(0.5);
+                        slimeLabel.setDepth(91);
+                        this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                    } else {
+                        slimeLabel.setPosition(coords.x, coords.y);
+                        slimeLabel.setText(slimeIcon);
+                    }
+                    
+                    const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                    console.log(`🟢 Rendered fallback slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                }
             });
         }
 
