@@ -864,6 +864,9 @@ function startGame() {
     // Assign random items to players
     assignRandomItems();
 
+    // Start continuous snail movement
+    startContinuousSnailMovement();
+
     console.log("Game started! Player 1's turn.");
 
     // Broadcast game start to all players (customized for each)
@@ -1041,7 +1044,7 @@ function updateSnail() {
 
   // Check boundaries based on movement range
   const leftBound = gameState.snail.startX - gameState.snail.moveRange;
-  const rightBound = gameState.snail.startX;
+  const rightBound = gameState.snail.startX + 1; // Allow snail to reach startX position (4 tiles total)
 
   // Check if we hit a wall or boundary
   if (
@@ -1073,8 +1076,7 @@ function switchTurn() {
   // Update slimes after turn switch
   updateSlimes();
 
-  // Update snail after turn switch
-  updateSnail();
+  // Note: Snail now moves continuously via timer, not per turn
 
   // Broadcast updated game state after entity movement
   broadcastCustomizedGameState();
@@ -1754,6 +1756,9 @@ io.on('connection', socket => {
         gameState.playerItems = {}; // Clear items when game stops
         gameState.gameWon = false; // Reset win state
         gameState.levelTransition = null; // Clear any transitions
+        
+        // Stop continuous snail movement
+        stopContinuousSnailMovement();
 
         // Add disconnect info to game state
         gameState.disconnectedPlayer = disconnectedPlayer;
@@ -1786,3 +1791,32 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Initialize continuous snail movement system
+let snailMovementInterval = null;
+
+function startContinuousSnailMovement() {
+  // Clear any existing interval
+  if (snailMovementInterval) {
+    clearInterval(snailMovementInterval);
+  }
+  
+  // Start continuous movement every 2 seconds
+  snailMovementInterval = setInterval(() => {
+    if (gameState.gameStarted && gameState.snail) {
+      updateSnail();
+      // Broadcast state after snail movement
+      broadcastCustomizedGameState();
+    }
+  }, 2000); // Move every 2 seconds
+  
+  console.log('🐌 Started continuous snail movement (every 2 seconds)');
+}
+
+function stopContinuousSnailMovement() {
+  if (snailMovementInterval) {
+    clearInterval(snailMovementInterval);
+    snailMovementInterval = null;
+    console.log('🐌 Stopped continuous snail movement');
+  }
+}

@@ -1473,13 +1473,50 @@ export class GameScene extends Phaser.Scene {
                 // If snail sprite doesn't exist or is wrong type, create it
                 if (!snailSprite || !(snailSprite instanceof Phaser.GameObjects.Sprite) || snailSprite.texture.key !== 'snail') {
                     snailSprite = this.add.sprite(coords.x, coords.y, 'snail');
-                    snailSprite.setOrigin(0.5);
-                    snailSprite.setScale(1.0); // Adjust scale as needed
+                    snailSprite.setOrigin(0.5, 0.8); // Explicitly center both x and y origin like players
+                    snailSprite.setScale(1.2); // Slightly larger for better visibility
                     snailSprite.setDepth(89); // Above tiles, below players and other entities
                     this.playerSprites['snail'] = snailSprite;
+                    
+                    console.log(`🐌 Created centered snail sprite at tile (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) = pixel (${coords.x}, ${coords.y}) with tileSize ${coords.tileSize}`);
+                    
+                    // Initialize position tracking for smooth movement
+                    (snailSprite as any).lastTileX = this.serverGameState.snail.x;
+                    (snailSprite as any).lastTileY = this.serverGameState.snail.y;
                 } else {
-                    // Update existing sprite position
-                    snailSprite.setPosition(coords.x, coords.y);
+                    // Check if snail position has changed for smooth animation
+                    const oldTileX = (snailSprite as any).lastTileX;
+                    const oldTileY = (snailSprite as any).lastTileY;
+                    const newTileX = this.serverGameState.snail.x;
+                    const newTileY = this.serverGameState.snail.y;
+                    
+                    if (oldTileX !== newTileX || oldTileY !== newTileY) {
+                        // Position changed - animate smooth movement
+                        console.log(`🐌 Smooth movement: (${oldTileX}, ${oldTileY}) → (${newTileX}, ${newTileY})`);
+                        
+                        // Stop any existing movement tween
+                        if ((snailSprite as any).moveTween) {
+                            (snailSprite as any).moveTween.stop();
+                        }
+                        
+                        // Create smooth tween to new position
+                        (snailSprite as any).moveTween = this.tweens.add({
+                            targets: snailSprite,
+                            x: coords.x,
+                            y: coords.y,
+                            duration: 1500, // 1.5 seconds smooth movement (slightly less than 2s server interval)
+                            ease: 'Power2',
+                            onComplete: () => {
+                                (snailSprite as any).moveTween = null;
+                                console.log(`🐌 Smooth movement completed to (${newTileX}, ${newTileY})`);
+                            }
+                        });
+                        
+                        // Update stored position
+                        (snailSprite as any).lastTileX = newTileX;
+                        (snailSprite as any).lastTileY = newTileY;
+                    }
+                    // If position hasn't changed, don't move the sprite
                 }
                 
                 // Play appropriate animation based on direction
