@@ -314,8 +314,14 @@ const LEVELS = {
       ],
       slimes: [
         {
-          x: 14,
-          y: 7, // Slime positioned 3 tiles up from trap (trap is at 14, 10)
+          x: 9,
+          y: 6, // First slime - left side of map
+          isStunned: false,
+          stunDuration: 0,
+        },
+        {
+          x: 18,
+          y: 8, // Second slime - right side of map
           isStunned: false,
           stunDuration: 0,
         },
@@ -921,9 +927,24 @@ function updateSlimes() {
       return; // Skip movement when stunned
     }
     
-    // Move toward nearest player
+    // Check if any player is within activation range (2 tiles)
+    const players = Object.values(gameState.players);
+    const playersInRange = players.filter(player => {
+      const distance = calculateDistance(slime, player);
+      return distance <= 2; // Activate when player is within 2 tiles
+    });
+    
+    if (playersInRange.length === 0) {
+      console.log(`🟢 Slime ${index} dormant (no players within 2 tiles)`);
+      return; // Skip movement when no players are close enough
+    }
+    
+    // Move toward nearest player (only if activated)
     const nearestPlayer = findNearestPlayer(slime);
     if (nearestPlayer) {
+      const distance = calculateDistance(slime, nearestPlayer);
+      console.log(`🟢 Slime ${index} activated! Nearest player at distance ${distance}`);
+      
       const moved = moveSlimeToward(slime, nearestPlayer);
       if (!moved) {
         console.log(`🟢 Slime ${index} could not move (blocked path)`);
