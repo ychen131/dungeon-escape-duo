@@ -61,6 +61,14 @@ interface GameState {
         isStunned: boolean;
         stunDuration: number;
     }>;
+    snail?: {
+        x: number;
+        y: number;
+        direction: number;
+        moveRange: number;
+        startX: number;
+        lastInteractionTurn: number;
+    };
 }
 
 export class GameScene extends Phaser.Scene {
@@ -497,11 +505,22 @@ export class GameScene extends Phaser.Scene {
                 this.updateGameStatus(); // Restore normal status
             }, 3000);
         });
+
+        this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
+            console.log('Snail message:', data.message);
+            this.updateStatus(data.message, '#f39c12', '16px', 'normal'); // Orange for snail interactions
+            
+            // Clear the message after 4 seconds (slightly longer for NPC dialogue)
+            setTimeout(() => {
+                this.updateGameStatus(); // Restore normal status
+            }, 4000);
+        });
     }
 
     private handleGameState(newGameState: GameState) {
         try {
             console.log('📡 Received game state from server:', newGameState);
+            console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
             
             if (!newGameState || typeof newGameState !== 'object') {
                 console.error('❌ Invalid game state received:', newGameState);
@@ -1033,6 +1052,32 @@ export class GameScene extends Phaser.Scene {
                 const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
                 console.log(`🟢 Rendered slime ${index} (${slimeState}) at (${slime.x}, ${slime.y})`);
             });
+        }
+
+        // Draw the snail (decorative NPC)
+        if (this.serverGameState.snail) {
+            console.log('🐌 Client: Rendering snail at', this.serverGameState.snail);
+            const coords = this.getTilePixelPosition(this.serverGameState.snail.x, this.serverGameState.snail.y);
+            
+            // Snail appearance - friendly orange color
+            const snailColor = 0xf39c12; // Orange
+            const snailIcon = '🐌';
+            const strokeColor = 0xe67e22;
+            
+            const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
+            snailCircle.setStrokeStyle(2, strokeColor);
+            snailCircle.setDepth(89); // Above tiles, below players and other entities
+            this.playerSprites['snail'] = snailCircle;
+            
+            // Add snail label
+            const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
+                fontSize: '16px',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            snailLabel.setDepth(90);
+            this.playerSprites['snail_label'] = snailLabel;
+            
+            console.log(`🐌 Rendered snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
         }
     }
 

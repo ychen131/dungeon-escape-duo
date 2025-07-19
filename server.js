@@ -326,6 +326,14 @@ const LEVELS = {
           stunDuration: 0,
         },
       ],
+      snail: {
+        x: 15,
+        y: 5, // Snail position - decorative NPC (on visible floor tile)
+        direction: -1, // -1 = moving left, 1 = moving right
+        moveRange: 4, // Moves within 4 tiles
+        startX: 15, // Starting position for calculating range
+        lastInteractionTurn: -1, // Track when last interaction happened
+      },
     },
     // Level 2 starting positions - placed on visible floor areas
     startingPositions: {
@@ -449,6 +457,12 @@ function loadNewMap(level = null) {
     }
     if (levelData.gameObjects.slimes) {
       gameState.slimes = levelData.gameObjects.slimes.map(slime => ({ ...slime }));
+    }
+    if (levelData.gameObjects.snail) {
+      gameState.snail = { ...levelData.gameObjects.snail };
+      console.log('🐌 Snail loaded from level data:', gameState.snail);
+    } else {
+      console.log('⚠️ No snail found in level data');
     }
   }
 
@@ -593,6 +607,13 @@ function createCustomizedGameState(playerId) {
       yourPlayerId: playerId,
       yourItem: gameState.playerItems[playerId] || null,
     };
+
+    // Debug: Check if snail is included
+    if (customizedState.snail) {
+      console.log('🐌 Snail included in customized state for', playerId, ':', customizedState.snail);
+    } else {
+      console.log('⚠️ No snail in customized state for', playerId);
+    }
 
     // Remove sensitive data (other player's items)
     delete customizedState.playerItems;
@@ -953,6 +974,64 @@ function updateSlimes() {
   });
 }
 
+// Snail AI Functions
+function updateSnail() {
+  if (!gameState.snail) return;
+  
+  console.log('🐌 Updating snail...');
+  
+  // Check for player interactions first
+  const players = Object.values(gameState.players);
+  const playersNearSnail = players.filter(player => {
+    const distance = calculateDistance(gameState.snail, player);
+    return distance <= 1; // Player must be adjacent to snail
+  });
+  
+  // If player is near and we haven't interacted recently, send message
+  if (playersNearSnail.length > 0) {
+    const currentTurn = gameState.currentPlayerTurn === 'player1' ? 1 : 2;
+    if (gameState.snail.lastInteractionTurn !== currentTurn) {
+      const messages = [
+        "Good Day, crawler.",
+        "Where is my key...."
+      ];
+      const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+      
+      console.log(`🐌 Snail says: "${randomMessage}"`);
+      
+      // Send message to all clients
+      io.emit('snailMessage', {
+        message: `🐌 Snail: "${randomMessage}"`,
+        snailPos: { x: gameState.snail.x, y: gameState.snail.y }
+      });
+      
+      gameState.snail.lastInteractionTurn = currentTurn;
+    }
+  }
+  
+  // Move snail horizontally within its range
+  const newX = gameState.snail.x + gameState.snail.direction;
+  
+  // Check boundaries based on movement range
+  const leftBound = gameState.snail.startX - gameState.snail.moveRange;
+  const rightBound = gameState.snail.startX;
+  
+  // Check if we hit a wall or boundary
+  if (newX <= leftBound || newX >= rightBound || 
+      newX < 0 || newX >= gameState.gridWidth ||
+      (gameState.dungeonLayout[gameState.snail.y] && 
+       gameState.dungeonLayout[gameState.snail.y][newX] === TILE_TYPES.WALL)) {
+    
+    // Reverse direction
+    gameState.snail.direction *= -1;
+    console.log(`🐌 Snail hit boundary/wall, reversing direction`);
+  } else {
+    // Valid move
+    gameState.snail.x = newX;
+    console.log(`🐌 Snail moved to (${gameState.snail.x}, ${gameState.snail.y})`);
+  }
+}
+
 // Helper function to switch turns and reset actions
 function switchTurn() {
   gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
@@ -964,7 +1043,10 @@ function switchTurn() {
   // Update slimes after turn switch
   updateSlimes();
   
-  // Broadcast updated game state after slime movement
+  // Update snail after turn switch
+  updateSnail();
+  
+  // Broadcast updated game state after entity movement
   broadcastCustomizedGameState();
 }
 
