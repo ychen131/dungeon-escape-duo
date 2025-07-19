@@ -1119,13 +1119,16 @@ export class GameScene extends Phaser.Scene {
                     // If trap sprite doesn't exist or is wrong type, create it
                     if (!trapSprite || !(trapSprite instanceof Phaser.GameObjects.Sprite) || trapSprite.texture.key !== 'spikeTrap') {
                         trapSprite = this.add.sprite(coords.x, coords.y, 'spikeTrap');
-                        trapSprite.setOrigin(0.5);
-                        trapSprite.setScale(1.5); // Scale up slightly for better visibility
+                        trapSprite.setOrigin(0.6, 0.6); // Center the sprite exactly on the tile center
+                        trapSprite.setScale(1.3); // Slightly smaller scale for better centering
                         trapSprite.setDepth(85); // Same depth as pressure plate
                         this.playerSprites[`trap_${index}`] = trapSprite;
+                        
+                        console.log(`🪤 Created trap sprite at tile (${trap.x}, ${trap.y}) = pixel (${coords.x}, ${coords.y}), tileSize: ${coords.tileSize}`);
                     } else {
                         // Update existing sprite position
                         trapSprite.setPosition(coords.x, coords.y);
+                        trapSprite.setOrigin(0.5, 0.5); // Ensure origin stays centered
                     }
                     
                     // Play appropriate animation based on trap state
