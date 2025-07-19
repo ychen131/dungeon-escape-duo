@@ -314,7 +314,7 @@ const LEVELS = {
       ],
       slimes: [
         {
-          x: 9,
+          x: 11,
           y: 6, // First slime - left side of map
           isStunned: false,
           stunDuration: 0,
