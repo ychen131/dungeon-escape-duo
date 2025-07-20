@@ -16,6 +16,41 @@ export class EasterEggScene extends Phaser.Scene {
     }
     
     create() {
+        // Update the status bar to show final victory message
+        const statusElement = document.getElementById('status');
+        if (statusElement) {
+            statusElement.textContent = '🎉 VICTORY! ALL LEVELS COMPLETE! 🎉';
+            statusElement.style.color = '#ffd700';
+            statusElement.style.fontSize = '24px';
+            statusElement.style.fontWeight = 'bold';
+        }
+        
+        const itemDisplayElement = document.getElementById('item-display');
+        if (itemDisplayElement) {
+            itemDisplayElement.textContent = '🏆 You have mastered Dungeon Escape Duo! 🏆';
+            itemDisplayElement.style.color = '#ffd700';
+        }
+        
+        // Update left sidebar to show all levels complete
+        const levelElement = document.getElementById('current-level');
+        if (levelElement) {
+            levelElement.textContent = 'All Complete!';
+            levelElement.style.color = '#ffd700';
+        }
+        
+        const actionsElement = document.getElementById('actions-left');
+        if (actionsElement) {
+            actionsElement.textContent = '∞';
+            actionsElement.style.color = '#ffd700';
+        }
+        
+        const turnElement = document.getElementById('current-turn');
+        if (turnElement) {
+            turnElement.textContent = 'Victory!';
+            turnElement.style.color = '#ffd700';
+            turnElement.style.fontWeight = 'bold';
+        }
+        
         // Get center coordinates
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
@@ -31,7 +66,7 @@ export class EasterEggScene extends Phaser.Scene {
         });
         
         // Add congratulations text
-        this.add.text(centerX, centerY - 140, '🎉 CONGRATULATIONS! 🎉', {
+        this.add.text(centerX, centerY - 180, '🎉 CONGRATULATIONS! 🎉', {
             fontSize: '28px',
             color: '#ffff00',
             fontFamily: 'Arial',
@@ -39,7 +74,7 @@ export class EasterEggScene extends Phaser.Scene {
             strokeThickness: 4
         }).setOrigin(0.5);
         
-        this.add.text(centerX, centerY - 100, 'You escaped together!', {
+        this.add.text(centerX, centerY - 140, 'You escaped together!', {
             fontSize: '20px',
             color: '#ffffff',
             fontFamily: 'Arial',
