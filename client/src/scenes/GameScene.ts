@@ -4,6 +4,8 @@ interface Player {
     x: number;
     y: number;
     lastMoveDirection?: string;
+    health?: number;
+    actionsRemaining?: number;
 }
 
 interface GameState {
@@ -87,6 +89,9 @@ export class GameScene extends Phaser.Scene {
     // Game object sprites
     private pressurePlateSprites: { [key: string]: Phaser.GameObjects.Sprite } = {};
     
+    // Health display
+    private healthText: Phaser.GameObjects.Text | null = null;
+    
     // Dynamic map sizing - will be set when tilemap is rendered
     private currentTileSize: number = 50; // Default tile size
     private currentMapOffsetX: number = 0; // Current map offset X
@@ -104,15 +109,15 @@ export class GameScene extends Phaser.Scene {
         this.load.tilemapTiledJSON('level1', 'level1.tmj');
         this.load.tilemapTiledJSON('level2', 'level2.tmj');
         
-        // Load player character sprite sheets
+        // Load player character sprite sheets with correct dimensions
         console.log('🏃 Loading character sprite sheets...');
         this.load.spritesheet('soldier', 'soldier.png', { 
-            frameWidth: 100, 
-            frameHeight: 100 
+            frameWidth: 100, // 900px ÷ 9 columns = 100px per frame
+            frameHeight: 100 // 700px ÷ 7 rows = 100px per frame
         });
         this.load.spritesheet('orc', 'orc.png', { 
-            frameWidth: 100, 
-            frameHeight: 100 
+            frameWidth: 100, // 800px ÷ 8 columns = 100px per frame
+            frameHeight: 100 // 600px ÷ 6 rows = 100px per frame
         });
         
         // Load cooperative puzzle spritesheets
@@ -163,6 +168,12 @@ export class GameScene extends Phaser.Scene {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
+        
+        console.log('🟢 Attempting to load slime attack spritesheet from slime_swallow.png');
+        this.load.spritesheet('slimeAttack', 'slime_swallow.png', {
+            frameWidth: 80, // 1120px ÷ 14 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
 
         
         // Add success logging for pressure plate loading
@@ -193,6 +204,10 @@ export class GameScene extends Phaser.Scene {
             console.log('✅ Slime jump spritesheet loaded successfully');
         });
 
+        this.load.on('filecomplete-spritesheet-slimeAttack', () => {
+            console.log('✅ Slime attack spritesheet loaded successfully');
+        });
+
         // Add error logging for sprite loading
         this.load.on('loaderror', (file: any) => {
             if (file.key === 'snail') {
@@ -203,7 +218,7 @@ export class GameScene extends Phaser.Scene {
                 console.error(`❌ Failed to load spike trap sprite: ${file.key} from ${file.url}`);
                 console.error('Spike trap load error details:', file);
             }
-            if (file.key === 'slimeIdle' || file.key === 'slimeMove') {
+            if (file.key === 'slimeIdle' || file.key === 'slimeMove' || file.key === 'slimeJump' || file.key === 'slimeAttack') {
                 console.error(`❌ Failed to load slime sprite: ${file.key} from ${file.url}`);
                 console.error('Slime load error details:', file);
             }
@@ -271,6 +286,16 @@ export class GameScene extends Phaser.Scene {
         
         // Set up socket event listeners
         this.setupSocketListeners();
+        
+        // Create health display
+        this.healthText = this.add.text(10, 10, '', { 
+            fontSize: '16px', 
+            color: '#fff',
+            fontFamily: 'Arial',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        this.healthText.setDepth(1000); // Always on top
     }
 
     private destroyCurrentTilemap() {
@@ -415,6 +440,22 @@ export class GameScene extends Phaser.Scene {
                 repeat: -1
             });
             
+            // Soldier Attack (Row 3, 6 frames) -> starts at frame 2*9=18
+            this.anims.create({
+                key: 'soldier-attack',
+                frames: this.anims.generateFrameNumbers('soldier', { start: 18, end: 23 }),
+                frameRate: 10,
+                repeat: 0
+            });
+            
+            // Soldier Death (Row 7, 9 frames) -> starts at frame 6*9=54
+            this.anims.create({
+                key: 'soldier-death',
+                frames: this.anims.generateFrameNumbers('soldier', { start: 54, end: 62 }),
+                frameRate: 10,
+                repeat: 0
+            });
+            
             console.log('✅ Soldier animations created');
         } else {
             console.warn('⚠️ Soldier sprite sheet not loaded, skipping animations');
@@ -434,6 +475,22 @@ export class GameScene extends Phaser.Scene {
                 frames: this.anims.generateFrameNumbers('orc', { start: 9, end: 10 }),
                 frameRate: 8,
                 repeat: -1
+            });
+            
+            // Orc Attack (Row 3, 6 frames) -> starts at frame 2*8=16
+            this.anims.create({
+                key: 'orc-attack',
+                frames: this.anims.generateFrameNumbers('orc', { start: 16, end: 21 }),
+                frameRate: 10,
+                repeat: 0
+            });
+            
+            // Orc Death (Row 6, 8 frames) -> starts at frame 5*8=40
+            this.anims.create({
+                key: 'orc-death',
+                frames: this.anims.generateFrameNumbers('orc', { start: 40, end: 47 }),
+                frameRate: 10,
+                repeat: 0
             });
             
             console.log('✅ Orc animations created');
@@ -563,8 +620,8 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Slime animations
-        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'), 'Jump exists?', this.textures.exists('slimeJump'));
-        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove') && this.textures.exists('slimeJump')) {
+        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'), 'Jump exists?', this.textures.exists('slimeJump'), 'Attack exists?', this.textures.exists('slimeAttack'));
+        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove') && this.textures.exists('slimeJump') && this.textures.exists('slimeAttack')) {
             console.log('🎭 Creating slime animations...');
             
             try {
@@ -607,7 +664,15 @@ export class GameScene extends Phaser.Scene {
                     repeat: 0
                 });
                 
-                console.log('✅ Slime animations created successfully - idle, move, jump, and stunned (green slime row 5)');
+                // Slime Attack (Row 5) -> starts at frame 4*14=56 (14 columns in attack sheet)
+                this.anims.create({
+                    key: 'slime_attack',
+                    frames: this.anims.generateFrameNumbers('slimeAttack', { start: 56, end: 69 }),
+                    frameRate: 15,
+                    repeat: 0
+                });
+                
+                console.log('✅ Slime animations created successfully - idle, move, jump, stunned, and attack (green slime row 5)');
             } catch (error) {
                 console.error('❌ Error creating slime animations:', error);
             }
@@ -622,7 +687,7 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-DOWN', () => this.sendMoveRequest('down'));
         this.input.keyboard?.on('keydown-LEFT', () => this.sendMoveRequest('left'));
         this.input.keyboard?.on('keydown-RIGHT', () => this.sendMoveRequest('right'));
-        this.input.keyboard?.on('keydown-SPACE', () => this.sendUseItemRequest());
+        this.input.keyboard?.on('keydown-SPACE', () => this.handleAttack());
     }
 
     private setupSocketListeners() {
@@ -707,6 +772,32 @@ export class GameScene extends Phaser.Scene {
             // Display speech bubble above the snail in the game world
             this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
+        
+        this.socket.on('playAttackAnimation', (data: { attackerId: string; victimId: string }) => {
+            console.log('Attack animation:', data);
+            
+            // Find attacker sprite
+            let attackerSprite = this.playerSprites[data.attackerId];
+            if (!attackerSprite && data.attackerId.startsWith('slime_')) {
+                attackerSprite = this.playerSprites[data.attackerId];
+            }
+            
+            if (attackerSprite && attackerSprite instanceof Phaser.GameObjects.Sprite) {
+                const textureKey = attackerSprite.texture.key;
+                if (data.attackerId.startsWith('slime')) {
+                    attackerSprite.play('slime_attack', true);
+                } else if (textureKey === 'soldier') {
+                    attackerSprite.play('soldier-attack', true);
+                } else if (textureKey === 'orc') {
+                    attackerSprite.play('orc-attack', true);
+                }
+            }
+        });
+        
+        this.socket.on('playerDied', (data: { playerId: string }) => {
+            console.log('Player died:', data.playerId);
+            this.handleDeath(data.playerId);
+        });
     }
 
     private handleGameState(newGameState: GameState) {
@@ -739,6 +830,7 @@ export class GameScene extends Phaser.Scene {
             this.updateGameStatus();
             this.updatePlayerSprites();
             this.updateEndTurnButton();
+            this.updateHealthDisplay();
             
         } catch (error) {
             console.error('❌ Error handling game state:', error);
@@ -1581,6 +1673,53 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
+    private handleAttack() {
+        if (!this.myPlayerId || !this.serverGameState) {
+            console.log('Cannot attack: not connected or no player ID');
+            return;
+        }
+
+        if (!this.serverGameState.gameStarted) {
+            console.log('Cannot attack: game not started');
+            return;
+        }
+
+        if (this.serverGameState.currentPlayerTurn !== this.myPlayerId) {
+            console.log('Cannot attack: not your turn');
+            return;
+        }
+
+        const player = this.serverGameState.players[this.myPlayerId];
+        if (!player) return;
+
+        // Check all four adjacent tiles for slimes
+        const directions = [{x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0}];
+
+        if (!this.serverGameState.slimes) {
+            console.log('No slimes on this level');
+            return;
+        }
+
+        for (const dir of directions) {
+            const targetTileX = player.x + dir.x;
+            const targetTileY = player.y + dir.y;
+
+            // Find if a slime is on the target tile
+            for (let i = 0; i < this.serverGameState.slimes.length; i++) {
+                const slime = this.serverGameState.slimes[i];
+                if (slime.x === targetTileX && slime.y === targetTileY) {
+                    // Found a slime to attack
+                    const slimeId = `slime_${i}`;
+                    console.log(`Attempting to attack slime: ${slimeId}`);
+                    this.socket.emit('playerAttack', { slimeId: slimeId });
+                    return; // Only attack one slime per action
+                }
+            }
+        }
+        
+        console.log('No adjacent slime to attack.');
+    }
+
     private sendMoveRequest(direction: string) {
         try {
             if (!this.myPlayerId || !this.serverGameState) {
@@ -1638,6 +1777,80 @@ export class GameScene extends Phaser.Scene {
             
         } catch (error) {
             console.error('❌ Error sending use item request:', error);
+        }
+    }
+
+    private updateHealthDisplay() {
+        if (!this.serverGameState || !this.myPlayerId || !this.healthText) return;
+        
+        const myPlayer = this.serverGameState.players[this.myPlayerId];
+        if (!myPlayer) {
+            this.healthText.setText('');
+            return;
+        }
+        
+        // Update health text
+        const health = myPlayer.health || 0;
+        this.healthText.setText(`Health: ${health}`);
+        
+        // Change color based on health
+        if (health <= 1) {
+            this.healthText.setColor('#ff0000'); // Red for critical health
+        } else if (health <= 2) {
+            this.healthText.setColor('#ffff00'); // Yellow for low health
+        } else {
+            this.healthText.setColor('#00ff00'); // Green for good health
+        }
+    }
+
+    private handleDeath(playerId: string) {
+        let deadPlayerSprite = this.playerSprites[playerId];
+        
+        if (!deadPlayerSprite || !(deadPlayerSprite instanceof Phaser.GameObjects.Sprite)) {
+            console.log(`No sprite found for dead player ${playerId}`);
+            return;
+        }
+        
+        const textureKey = deadPlayerSprite.texture.key;
+        let deathAnimKey = '';
+        if (textureKey === 'soldier') {
+            deathAnimKey = 'soldier-death';
+        } else if (textureKey === 'orc') {
+            deathAnimKey = 'orc-death';
+        }
+        
+        // If it's our player, show message and disable input
+        if (playerId === this.myPlayerId) {
+            this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 'YOU DIED', {
+                fontSize: '48px',
+                color: '#ff0000',
+                fontFamily: 'Arial',
+                stroke: '#000000',
+                strokeThickness: 4
+            }).setOrigin(0.5);
+            this.input.keyboard!.enabled = false;
+        }
+        
+        // Play animation and destroy sprite on completion
+        if (deathAnimKey) {
+            deadPlayerSprite.play(deathAnimKey, true);
+            deadPlayerSprite.on(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                deadPlayerSprite.destroy();
+                // Also destroy the label
+                if (this.playerSprites[playerId + '_label']) {
+                    (this.playerSprites[playerId + '_label'] as any).destroy();
+                    delete this.playerSprites[playerId + '_label'];
+                }
+                delete this.playerSprites[playerId];
+            }, this);
+        } else {
+            deadPlayerSprite.destroy(); // Fallback if no animation
+            // Also destroy the label
+            if (this.playerSprites[playerId + '_label']) {
+                (this.playerSprites[playerId + '_label'] as any).destroy();
+                delete this.playerSprites[playerId + '_label'];
+            }
+            delete this.playerSprites[playerId];
         }
     }
 
