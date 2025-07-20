@@ -900,6 +900,9 @@ function startGame() {
 
     console.log("Game started! Player 1's turn.");
 
+    // Emit gameStart event to all clients
+    io.emit('gameStart', gameState);
+
     // Broadcast game start to all players (customized for each)
     broadcastCustomizedGameState();
   }

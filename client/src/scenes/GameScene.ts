@@ -84,6 +84,7 @@ export class GameScene extends Phaser.Scene {
     private socket: any;
     private serverGameState: GameState | null = null;
     private connectionRejected: boolean = false;
+    private initialGameState: GameState | null = null;
 
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
@@ -103,6 +104,14 @@ export class GameScene extends Phaser.Scene {
 
     constructor() {
         super({ key: 'GameScene' });
+    }
+
+    init(data: { initialState?: GameState }) {
+        // Store initial state if coming from LobbyScene
+        if (data && data.initialState) {
+            this.initialGameState = data.initialState;
+            console.log('🎮 GameScene initialized with state from LobbyScene');
+        }
     }
 
     preload() {
@@ -266,9 +275,9 @@ export class GameScene extends Phaser.Scene {
         console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
         console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
         console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
-                  console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
-          console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
-          console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
+        console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
+        console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
+        console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
         
         // Create character animations
         this.createCharacterAnimations();
@@ -279,17 +288,30 @@ export class GameScene extends Phaser.Scene {
         // Try to render the tilemap
         this.renderTilemap();
         
-        // Connect to server via global io function
-        // In development, connect to the Express server explicitly
-        const isDevelopment = import.meta.env.DEV;
-        const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
-        this.socket = (window as any).io(serverUrl);
+        // Check if we already have a socket from LobbyScene
+        this.socket = (window as any).socket;
         
-        // Expose socket globally for testing
-        (window as any).socket = this.socket;
+        if (!this.socket) {
+            // No existing socket, create new connection
+            const isDevelopment = import.meta.env.DEV;
+            const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
+            this.socket = (window as any).io(serverUrl);
+            
+            // Expose socket globally for testing
+            (window as any).socket = this.socket;
+        } else {
+            console.log('🔌 Using existing socket connection from LobbyScene');
+        }
         
         // Set up socket event listeners
         this.setupSocketListeners();
+        
+        // If we have initial game state from LobbyScene, handle it
+        if (this.initialGameState) {
+            console.log('🎯 Applying initial game state from LobbyScene');
+            this.handleGameState(this.initialGameState);
+            this.initialGameState = null; // Clear after use
+        }
         
         // Create health display
         this.healthText = this.add.text(10, 10, '', { 
