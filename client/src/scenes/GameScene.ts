@@ -1555,48 +1555,115 @@ export class GameScene extends Phaser.Scene {
         console.log(`🟢 Valid slime IDs from server:`, Array.from(validSlimeIds));
         console.log(`🟢 Current slime sprites:`, Object.keys(this.playerSprites).filter(k => k.match(/^slime_\d+$/)));
         
+        // Create a copy of keys to avoid modification during iteration
+        const currentSpriteKeys = Object.keys(this.playerSprites);
+        
         // Clean up any slime sprites that are no longer in the server state
         // This runs whether slimes array is empty, undefined, or has items
-        Object.keys(this.playerSprites).forEach(spriteKey => {
+        currentSpriteKeys.forEach(spriteKey => {
             if (spriteKey.match(/^slime_\d+$/)) {
                 // This is a slime sprite - check if it's still valid
                 if (!validSlimeIds.has(spriteKey)) {
                     // This slime is no longer in the server state - remove it
                     console.log(`🗑️ Removing dead slime sprite: ${spriteKey}`);
                     
+                    // Destroy the main slime sprite
                     if (this.playerSprites[spriteKey]) {
-                        (this.playerSprites[spriteKey] as any).destroy();
+                        const slimeSprite = this.playerSprites[spriteKey];
+                        
+                        // Clear any pending jump timeout for this slime BEFORE destroying
+                        if ((slimeSprite as any).jumpTimeout) {
+                            clearTimeout((slimeSprite as any).jumpTimeout);
+                            (slimeSprite as any).jumpTimeout = null;
+                        }
+                        
+                        console.log(`🗑️ Destroying slime sprite: ${spriteKey}, type:`, slimeSprite.constructor.name, 'active:', (slimeSprite as any).active);
+                        
+                        // Make absolutely sure the sprite is removed
+                        (slimeSprite as any).setVisible(false);
+                        (slimeSprite as any).setActive(false);
+                        
+                        // Only call these methods if they exist (sprites have them, other objects might not)
+                        if ((slimeSprite as any).removeFromDisplayList) {
+                            (slimeSprite as any).removeFromDisplayList();
+                        }
+                        if ((slimeSprite as any).removeFromUpdateList) {
+                            (slimeSprite as any).removeFromUpdateList();
+                        }
+                        
+                        // Extra paranoid cleanup - remove from scene's display list
+                        const scene = (slimeSprite as any).scene;
+                        if (scene && scene.children && scene.children.exists(slimeSprite)) {
+                            console.log(`🔥 Force removing ${spriteKey} from scene display list`);
+                            scene.children.remove(slimeSprite);
+                        }
+                        
+                        (slimeSprite as any).destroy();
                         delete this.playerSprites[spriteKey];
+                        console.log(`✅ Slime sprite ${spriteKey} destroyed and deleted from playerSprites`);
                     }
+                    
+                    // Destroy the slime label (if it exists from fallback rendering)
                     if (this.playerSprites[spriteKey + '_label']) {
-                        (this.playerSprites[spriteKey + '_label'] as any).destroy();
+                        const labelSprite = this.playerSprites[spriteKey + '_label'];
+                        (labelSprite as any).setVisible(false);
+                        (labelSprite as any).destroy();
                         delete this.playerSprites[spriteKey + '_label'];
                     }
+                    
+                    // Destroy the health text
                     if (this.playerSprites[spriteKey + '_health']) {
-                        (this.playerSprites[spriteKey + '_health'] as any).destroy();
+                        const healthSprite = this.playerSprites[spriteKey + '_health'];
+                        (healthSprite as any).setVisible(false);
+                        (healthSprite as any).destroy();
                         delete this.playerSprites[spriteKey + '_health'];
                     }
+                    
+                    // Destroy the ID label
                     if (this.playerSprites[spriteKey + '_id']) {
-                        (this.playerSprites[spriteKey + '_id'] as any).destroy();
+                        const idSprite = this.playerSprites[spriteKey + '_id'];
+                        (idSprite as any).setVisible(false);
+                        (idSprite as any).destroy();
                         delete this.playerSprites[spriteKey + '_id'];
                     }
                 }
             }
         });
         
+        // Double-check all slime-related sprites are gone if no slimes exist
+        if (!this.serverGameState.slimes || this.serverGameState.slimes.length === 0) {
+            console.log(`🔍 No slimes in server state - verifying all slime sprites are cleaned up`);
+            // Get all display objects in the scene
+            const allChildren = this.children.list;
+            allChildren.forEach((child: any) => {
+                // Check if this might be a lingering slime sprite
+                if (child && child.texture && child.texture.key && 
+                    (child.texture.key === 'slimeIdle' || child.texture.key === 'slimeMove' || 
+                     child.texture.key === 'slimeJump' || child.texture.key === 'slimeAttack')) {
+                    console.log(`⚠️ Found orphaned slime sprite in scene! Destroying it.`);
+                    child.destroy();
+                }
+            });
+        }
+        
         // Only draw slimes if they exist
         if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
+            console.log(`🟢 Drawing ${this.serverGameState.slimes.length} slimes from server state`);
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
                 // Use the slime's actual ID if available, otherwise use index
                 const slimeId = slime.id || `slime_${index}`;
+                console.log(`🟢 Processing slime: index=${index}, slime.id=${slime.id}, using slimeId=${slimeId}`);
                 
                 // Create or update animated slime sprite
                 if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
                     // console.log('✅ Slime textures exist, creating sprite for slime', slimeId);
                     
                     let slimeSprite = this.playerSprites[slimeId] as Phaser.GameObjects.Sprite;
+                    
+                    // Check if this sprite key was just deleted
+                    console.log(`🔍 Checking if sprite ${slimeId} exists:`, !!slimeSprite);
                     
                     // If slime sprite doesn't exist or is wrong type, create it
                     if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
@@ -1614,12 +1681,12 @@ export class GameScene extends Phaser.Scene {
                         (slimeSprite as any).isJumping = false;
                         (slimeSprite as any).lastServerUpdate = 'initial'; // Track server updates
                         
-                        console.log(`🟢 Created slime sprite at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
+                        console.log(`🟢 Created NEW slime sprite ${slimeId} at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
                         
                         // Start with the appropriate animation for initial state
                         const initialAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
                         slimeSprite.play(initialAnimation);
-                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${index + 1}`);
+                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${slimeId}`);
                     } else {
                         // Update existing sprite position
                         slimeSprite.setPosition(coords.x, coords.y);
