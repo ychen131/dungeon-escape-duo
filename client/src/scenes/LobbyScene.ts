@@ -83,10 +83,10 @@ export class LobbyScene extends Phaser.Scene {
         // Get or create socket connection
         if (!this.socket || typeof this.socket !== 'object') {
             const isDevelopment = import.meta.env && import.meta.env.DEV;
-            const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
+            const serverUrl = isDevelopment ? 'http://localhost:3000' : 'https://dungeon-escape-duo.onrender.com';
             this.socket = (window as any).io(serverUrl);
             (window as any).socket = this.socket; // Store globally for GameScene
-            console.log('🔌 Created new socket connection in LobbyScene');
+            console.log('🔌 Created new socket connection in LobbyScene to:', serverUrl);
         } else {
             console.log('🔌 Using existing socket connection');
         }
