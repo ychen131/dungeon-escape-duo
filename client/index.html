@@ -54,13 +54,47 @@
             gap: 20px;
         }
         
-        /* Side button styling */
+        /* Side button styling - now used for both left and right sidebars */
         .side-button {
             display: flex;
             flex-direction: column;
             align-items: center;
             min-width: 120px;
             gap: 10px;
+        }
+        
+        /* Left sidebar styling */
+        .left-sidebar {
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+        
+        .left-sidebar h3 {
+            color: #3498db;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        
+        .left-sidebar .info-section {
+            background-color: #34495e;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+        
+        .left-sidebar .info-section p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        
+        .left-sidebar .info-section .label {
+            color: #95a5a6;
+        }
+        
+        .left-sidebar .info-section .value {
+            color: #ecf0f1;
+            font-weight: bold;
         }
         
         #status {
@@ -187,6 +221,18 @@
 <body>
     <div id="game-container">
         <div id="game-wrapper">
+            <div class="side-button left-sidebar">
+                <div class="info-section">
+                    <h3>Game Info</h3>
+                    <p><span class="label">Level:</span> <span class="value" id="current-level">-</span></p>
+                    <p><span class="label">Room Code:</span> <span class="value" id="room-code">-</span></p>
+                </div>
+                <div class="info-section">
+                    <h3>Actions</h3>
+                    <p><span class="label">Remaining:</span> <span class="value" id="actions-left">-</span></p>
+                    <p><span class="label">Turn:</span> <span class="value" id="current-turn">-</span></p>
+                </div>
+            </div>
             <div id="game"></div>
             <div class="side-button">
                 <button id="end-turn-btn">End Turn</button>

@@ -984,7 +984,8 @@ export class GameScene extends Phaser.Scene {
     private updateGameStatus() {
         if (!this.serverGameState) return;
         
-
+        // Update left sidebar elements
+        this.updateLeftSidebar();
 
         const playerCount = Object.keys(this.serverGameState.players).length;
         
@@ -2025,6 +2026,45 @@ export class GameScene extends Phaser.Scene {
             this.healthText.setColor('#ffff00'); // Yellow for low health
         } else {
             this.healthText.setColor('#00ff00'); // Green for good health
+        }
+    }
+
+    private updateLeftSidebar() {
+        if (!this.serverGameState) return;
+
+        // Update room code
+        const roomCodeElement = document.getElementById('room-code');
+        if (roomCodeElement) {
+            // For now, use a placeholder - you might want to generate a real room code later
+            roomCodeElement.textContent = 'DEMO';
+        }
+
+        // Update current level
+        const levelElement = document.getElementById('current-level');
+        if (levelElement) {
+            const levelNum = this.serverGameState.levelProgression || 1;
+            levelElement.textContent = `Level ${levelNum}`;
+        }
+
+        // Update actions remaining
+        const actionsElement = document.getElementById('actions-left');
+        if (actionsElement) {
+            const actions = this.serverGameState.actionsRemaining || 0;
+            actionsElement.textContent = actions.toString();
+        }
+
+        // Update current turn
+        const turnElement = document.getElementById('current-turn');
+        if (turnElement) {
+            if (!this.serverGameState.gameStarted) {
+                turnElement.textContent = 'Waiting...';
+            } else {
+                const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'Player 1' : 'Player 2';
+                const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
+                turnElement.textContent = currentPlayer;
+                turnElement.style.color = isMyTurn ? '#2ecc71' : '#ecf0f1';
+                turnElement.style.fontWeight = isMyTurn ? 'bold' : 'normal';
+            }
         }
     }
 
