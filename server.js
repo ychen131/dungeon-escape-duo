@@ -1008,7 +1008,18 @@ function updateSlimes() {
         // Check for player death
         if (player.health <= 0) {
           console.log(`Player ${playerId} has been defeated!`);
-          io.emit('playerDied', { playerId: playerId }); // Notify ALL clients
+          
+          // Send death notification to victim
+          io.emit('playerDied', { playerId: playerId });
+          
+          // Send death message to other players
+          const victimName = playerId === 'player1' ? 'Player 1' : 'Player 2';
+          console.log(`🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${playerId})`);
+          io.emit('deathMessage', { 
+            message: `💀 ${victimName} died!`, 
+            deadPlayerId: playerId 
+          });
+          
           delete gameState.players[playerId];
         }
         break; // Slime attacks one player and ends its turn
@@ -1760,7 +1771,17 @@ io.on('connection', socket => {
           
           // Small delay to ensure movement is rendered, then trigger death
           setTimeout(() => {
+            // Send death notification to victim
             io.emit('playerDied', { playerId: playerId });
+            
+            // Send death message to other players
+            const victimName = playerId === 'player1' ? 'Player 1' : 'Player 2';
+            console.log(`🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${playerId})`);
+            io.emit('deathMessage', { 
+              message: `💀 ${victimName} died!`, 
+              deadPlayerId: playerId 
+            });
+            
             delete gameState.players[playerId];
             broadcastCustomizedGameState();
           }, 100); // 100ms delay for visual feedback
