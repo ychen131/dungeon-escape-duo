@@ -1606,7 +1606,7 @@ io.on('connection', socket => {
                   );
                   
                   // Check for deaths on newly activated trap
-                  if (!wasTrapOpen && trap.isOpen) {
+                  if (wasTrapOpen && !trap.isOpen) {
                     const trapX = trap.x;
                     const trapY = trap.y;
                     
