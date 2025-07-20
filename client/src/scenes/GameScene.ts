@@ -716,6 +716,12 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-RIGHT', () => this.sendMoveRequest('right'));
         this.input.keyboard?.on('keydown-SPACE', () => this.handleAttack());
         this.input.keyboard?.on('keydown-E', () => this.sendUseItemRequest());
+        
+        // DEBUG: Press 'N' to test the Nyan Cat Easter Egg
+        this.input.keyboard?.on('keydown-N', () => {
+            console.log('🎉 DEBUG: Triggering Easter Egg directly!');
+            this.scene.start('EasterEggScene');
+        });
     }
 
     private setupSocketListeners() {
@@ -862,6 +868,16 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('playerDied', (data: { playerId: string }) => {
             console.log('Player died:', data.playerId);
             this.handleDeath(data.playerId);
+        });
+        
+        this.socket.on('showEasterEgg', () => {
+            console.log('🎉 Easter egg triggered! Transitioning to Nyan Cat scene...');
+            
+            // Stop any current game music if needed
+            // this.sound.stopAll();
+            
+            // Transition to easter egg scene
+            this.scene.start('EasterEggScene');
         });
         
         this.socket.on('deathMessage', (data: { message: string; deadPlayerId: string }) => {

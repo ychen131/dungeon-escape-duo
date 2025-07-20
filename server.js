@@ -811,8 +811,9 @@ function advanceToNextLevel() {
       broadcastCustomizedGameState();
     }, 3000); // 3 second transition screen
   } else if (currentLevel === 'level2') {
-    // Completing Level 2 → Game Complete!
+    // Completing Level 2 → Game Complete! Show Easter Egg!
     console.log('🏆 GAME COMPLETED! Both levels mastered!');
+    console.log('🎉 Triggering Nyan Cat Easter Egg!');
 
     // Set final victory state
     gameState.gameCompleted = true;
@@ -828,11 +829,21 @@ function advanceToNextLevel() {
     // Broadcast final victory state
     broadcastCustomizedGameState();
 
-    // Clear the transition after a longer celebration
+    // After showing the transition message, trigger the easter egg
     setTimeout(() => {
       gameState.levelTransition = null;
+      
+      // Emit the easter egg event to all clients
+      io.emit('showEasterEgg');
+      console.log('🐱 Emitted showEasterEgg event to all clients');
+      
+      // Reset game state for potential replay
+      gameState.gameStarted = false;
+      gameState.currentPlayerTurn = null;
+      gameState.gameCompleted = false;
+      
       broadcastCustomizedGameState();
-    }, 5000); // 5 second final celebration
+    }, 3000); // 3 second transition before easter egg
   }
 }
 

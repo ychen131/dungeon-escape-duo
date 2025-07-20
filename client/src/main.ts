@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { LobbyScene } from './scenes/LobbyScene';
 import { GameScene } from './scenes/GameScene';
+import { EasterEggScene } from './scenes/EasterEggScene';
 
 // Phaser 3 Game Configuration
 const config: Phaser.Types.Core.GameConfig = {
@@ -11,7 +12,8 @@ const config: Phaser.Types.Core.GameConfig = {
     backgroundColor: '#000000', // Black background outside map
     scene: [
         LobbyScene, // Start with lobby scene
-        GameScene // Our main game scene
+        GameScene, // Our main game scene
+        EasterEggScene // Easter egg scene for game completion
     ],
     render: {
         pixelArt: true, // Prevent blurring on pixel art
