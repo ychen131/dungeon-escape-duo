@@ -780,6 +780,7 @@ function advanceToNextLevel() {
 
     // After transition delay, load Level 2
     setTimeout(() => {
+      // First load the new map which resets douse fire usage
       loadNewMap('level2');
 
       // Reset game state for new level
@@ -789,13 +790,6 @@ function advanceToNextLevel() {
       gameState.actionsRemaining = 2; // Reset actions for new level
       gameState.levelProgression = 2; // Update progression tracker
       gameState.levelTransition = null; // Clear transition state
-
-      // Reset douse fire availability for new level
-      gameState.douseFireUsed.player1 = false;
-      gameState.douseFireUsed.player2 = false;
-      console.log(
-        '🔥 Douse fire availability reset for new level - both players get 1 douse fire each'
-      );
 
       // Reset player positions to Level 2 starting positions
       if (gameState.players.player1) {
@@ -808,6 +802,7 @@ function advanceToNextLevel() {
       }
 
       // Assign new items for the new level
+      // loadNewMap already reset douseFireUsed, so items will be assigned properly
       assignRandomItems();
 
       console.log(`✨ Level 2 ready! Players reset to starting positions.`);
