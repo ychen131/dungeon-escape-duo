@@ -102,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     private currentTileSize: number = 50; // Default tile size
     private currentMapOffsetX: number = 0; // Current map offset X
     private currentMapOffsetY: number = 0; // Current map offset Y
+    private backgroundMusic: Phaser.Sound.BaseSound | null = null;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -122,6 +123,10 @@ export class GameScene extends Phaser.Scene {
         this.load.image('tiles', 'Full.png');
         this.load.tilemapTiledJSON('level1', 'level1.tmj');
         this.load.tilemapTiledJSON('level2', 'level2.tmj');
+        
+        // Load level background music
+        this.load.audio('level1_music', ['assets/audio/hero.mp3', 'assets/audio/hero.ogg']);
+        this.load.audio('level2_music', ['assets/audio/commando.mp3', 'assets/audio/commando.ogg']);
         
         // Load player character sprite sheets with correct dimensions
         console.log('🏃 Loading character sprite sheets...');
@@ -324,7 +329,7 @@ export class GameScene extends Phaser.Scene {
         });
         this.healthText.setDepth(1000); // Always on top
     }
-
+    
     private destroyCurrentTilemap() {
         // Destroy all existing tilemap layers
         this.tilemapLayers.forEach(layer => {
@@ -335,7 +340,37 @@ export class GameScene extends Phaser.Scene {
         this.tilemapLayers = [];
         console.log('🧹 Destroyed existing tilemap layers');
     }
-
+    
+    private playLevelMusic(level: string) {
+        // Stop current music if playing
+        if (this.backgroundMusic) {
+            this.backgroundMusic.stop();
+            this.backgroundMusic = null;
+        }
+        
+        // Resume audio context if it's suspended (for WebAudio)
+        if ('context' in this.sound && (this.sound as any).context.state === 'suspended') {
+            (this.sound as any).context.resume();
+        }
+        
+        // Play appropriate music based on level
+        if (level === 'level1') {
+            this.backgroundMusic = this.sound.add('level1_music', {
+                loop: true,
+                volume: 0.3
+            });
+            this.backgroundMusic.play();
+            console.log('🎵 Playing Level 1 music (hero.ogg)');
+        } else if (level === 'level2') {
+            this.backgroundMusic = this.sound.add('level2_music', {
+                loop: true,
+                volume: 0.3
+            });
+            this.backgroundMusic.play();
+            console.log('🎵 Playing Level 2 music (commando.ogg)');
+        }
+    }
+    
     private renderTilemap(level: string = 'level1') {
         try {
             console.log(`🎯 Rendering tilemap for ${level}`);
@@ -720,6 +755,9 @@ export class GameScene extends Phaser.Scene {
         // DEBUG: Press 'N' to test the Nyan Cat Easter Egg
         this.input.keyboard?.on('keydown-N', () => {
             console.log('🎉 DEBUG: Triggering Easter Egg directly!');
+            if (this.backgroundMusic) {
+                this.backgroundMusic.stop();
+            }
             this.scene.start('EasterEggScene');
         });
     }
@@ -873,8 +911,10 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('showEasterEgg', () => {
             console.log('🎉 Easter egg triggered! Transitioning to Nyan Cat scene...');
             
-            // Stop any current game music if needed
-            // this.sound.stopAll();
+            // Stop any current game music
+            if (this.backgroundMusic) {
+                this.backgroundMusic.stop();
+            }
             
             // Transition to easter egg scene
             this.scene.start('EasterEggScene');
@@ -927,6 +967,12 @@ export class GameScene extends Phaser.Scene {
             if (levelChanged && newGameState.currentLevel) {
                 console.log(`🔄 Level changed to ${newGameState.currentLevel}, re-rendering tilemap`);
                 this.renderTilemap(newGameState.currentLevel);
+                this.playLevelMusic(newGameState.currentLevel);
+            }
+            
+            // Play music on initial load if we have a level
+            if (!levelChanged && newGameState.currentLevel && !this.backgroundMusic) {
+                this.playLevelMusic(newGameState.currentLevel);
             }
             
             this.updateGameStatus();
