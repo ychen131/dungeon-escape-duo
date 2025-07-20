@@ -800,24 +800,31 @@ export class GameScene extends Phaser.Scene {
         });
         
         this.socket.on('deathMessage', (data: { message: string; deadPlayerId: string }) => {
-            console.log('Death message:', data.message, 'for player:', data.deadPlayerId);
+            console.log('🔔 RECEIVED deathMessage:', data.message, 'deadPlayerId:', data.deadPlayerId, 'myPlayerId:', this.myPlayerId);
             
             // Only show message to other players (not the one who died)
             if (data.deadPlayerId !== this.myPlayerId) {
-                this.updateStatus(data.message, '#ff6b35', '18px', 'bold'); // Orange color for death notifications
+                console.log('✅ Showing death message to other player:', data.message);
                 
-                // Clear the message after 5 seconds
-                setTimeout(() => {
-                    this.updateGameStatus(); // Restore normal status
-                }, 5000);
+                // Show big centered death message (similar to "YOU DIED")
+                this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, data.message, {
+                    fontSize: '48px',
+                    color: '#ff0000', // Red color like "YOU DIED"
+                    fontFamily: 'Arial',
+                    stroke: '#000000',
+                    strokeThickness: 4
+                }).setOrigin(0.5).setDepth(1000); // High depth to appear on top of everything
+                
+            } else {
+                console.log('❌ Not showing death message - this is the player who died');
             }
         });
     }
 
     private handleGameState(newGameState: GameState) {
         try {
-            console.log('📡 Received game state from server:', newGameState);
-            console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
+            // console.log('📡 Received game state from server:', newGameState);
+            // console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
             
             if (!newGameState || typeof newGameState !== 'object') {
                 console.error('❌ Invalid game state received:', newGameState);
@@ -1112,7 +1119,7 @@ export class GameScene extends Phaser.Scene {
                     (this.playerSprites[playerId + '_label'] as any).destroy();
                     delete this.playerSprites[playerId + '_label'];
                 }
-                console.log(`Removed sprite for disconnected player: ${playerId}`);
+                // console.log(`Removed sprite for disconnected player: ${playerId}`);
             }
         }
 
@@ -1215,7 +1222,7 @@ export class GameScene extends Phaser.Scene {
                 keySprite.setDepth(90); // Below players but above tiles
                 keySprite.play('key_shine');
                 this.playerSprites['key'] = keySprite;
-                console.log('✨ Rendered animated key');
+                // console.log('✨ Rendered animated key');
             } else {
                 console.warn('⚠️ Key sprite not available, skipping key rendering');
             }
@@ -1233,7 +1240,7 @@ export class GameScene extends Phaser.Scene {
                         fireSprite.setDepth(90); // Below players but above tiles
                         fireSprite.play('fire_burn');
                         this.playerSprites[`fire_${index}`] = fireSprite;
-                        console.log(`🔥 Rendered animated fire ${index}`);
+                        // console.log(`🔥 Rendered animated fire ${index}`);
                     } else {
                         console.warn('⚠️ Fire sprite not available, skipping fire rendering');
                     }
@@ -1272,9 +1279,9 @@ export class GameScene extends Phaser.Scene {
             doorLabel.setDepth(91);
             this.playerSprites['door_label'] = doorLabel;
             
-            const doorState = this.serverGameState.door.isUnlocked ? 'unlocked' : 
-                             (this.serverGameState.key?.heldBy ? 'highlighted' : 'locked');
-            console.log(`🚪 Rendered door (${doorState})`);
+            // const doorState = this.serverGameState.door.isUnlocked ? 'unlocked' : 
+            //                  (this.serverGameState.key?.heldBy ? 'highlighted' : 'locked');
+            // console.log(`🚪 Rendered door (${doorState})`);
         }
 
         // Draw the pressure plates
@@ -1302,10 +1309,10 @@ export class GameScene extends Phaser.Scene {
                     // Play appropriate animation based on state
                     if (plate.isPressed) {
                         plateSprite.play('pressure_plate_activated');
-                        console.log(`🔘 Rendered activated pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                        // console.log(`🔘 Rendered activated pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
                     } else {
                         plateSprite.play('pressure_plate_idle');
-                        console.log(`⚪ Rendered idle pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
+                        // console.log(`⚪ Rendered idle pressure plate ${index + 1} at (${plate.x}, ${plate.y})`);
                     }
                     
                     // Store with unique key for each plate
@@ -1342,7 +1349,7 @@ export class GameScene extends Phaser.Scene {
                 
                 // Create or update animated spike trap sprite
                 if (this.textures.exists('spikeTrap')) {
-                    console.log('✅ Spike trap texture exists, creating sprite for trap', index + 1);
+                    // console.log('✅ Spike trap texture exists, creating sprite for trap', index + 1);
                     
                     let trapSprite = this.playerSprites[`trap_${index}`] as Phaser.GameObjects.Sprite;
                     
@@ -1375,8 +1382,8 @@ export class GameScene extends Phaser.Scene {
                         console.log(`🪤 Playing ${targetAnimation} animation for trap ${index + 1}`);
                     }
                     
-                    const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
-                    console.log(`🪤 Rendered animated spike trap ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                    // const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                    // console.log(`🪤 Rendered animated spike trap ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
                 } else {
                     // Fallback to rectangle if spike trap sprite not available
                     console.log('⚠️ Spike trap texture not found, using fallback for trap', index + 1);
@@ -1427,7 +1434,7 @@ export class GameScene extends Phaser.Scene {
                 
                 // Create or update animated slime sprite
                 if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
-                    console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
+                    // console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
                     
                     let slimeSprite = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Sprite;
                     
@@ -1553,8 +1560,8 @@ export class GameScene extends Phaser.Scene {
                         }
                     }
                     
-                    const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
-                    console.log(`🟢 Rendered animated slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                    // const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                    // console.log(`🟢 Rendered animated slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
                 } else {
                     // Fallback to circles if slime sprites not available
                     console.log('⚠️ Slime textures not found, using fallback for slime', index + 1);

@@ -1627,6 +1627,7 @@ io.on('connection', socket => {
                         
                         // Send death message to other players
                         const victimName = deathPlayerId === 'player1' ? 'Player 1' : 'Player 2';
+                        console.log(`🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${deathPlayerId})`);
                         io.emit('deathMessage', { 
                           message: `💀 ${victimName} died!`, 
                           deadPlayerId: deathPlayerId 
