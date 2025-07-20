@@ -1017,18 +1017,25 @@ function updateSnail() {
   const players = Object.values(gameState.players);
   const playersNearSnail = players.filter(player => {
     const distance = calculateDistance(gameState.snail, player);
-    console.log(`🐌 Distance check: Player at (${player.x}, ${player.y}), Snail at (${gameState.snail.x}, ${gameState.snail.y}), Distance: ${distance}`);
+    console.log(
+      `🐌 Distance check: Player at (${player.x}, ${player.y}), Snail at (${gameState.snail.x}, ${gameState.snail.y}), Distance: ${distance}`
+    );
     return distance <= 1; // Player must be adjacent to snail
   });
 
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
     console.log(`🐌 ${playersNearSnail.length} player(s) near snail!`);
-    
+
     // Use timestamp-based cooldown instead of turn-based (5 seconds cooldown)
     const now = Date.now();
-    if (!gameState.snail.lastInteractionTime || (now - gameState.snail.lastInteractionTime) > 5000) {
-      const messages = ['Good Day, crawler.', 'Where is my key....', 'Have you seen any shiny objects?', 'The walls here are quite damp.'];
+    if (!gameState.snail.lastInteractionTime || now - gameState.snail.lastInteractionTime > 5000) {
+      const messages = [
+        'Good Day, crawler.',
+        'Where is my key....',
+        'Have you seen any shiny objects?',
+        'The walls here are quite damp.',
+      ];
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
       console.log(`🐌 Snail says: "${randomMessage}"`);
@@ -1043,7 +1050,9 @@ function updateSnail() {
 
       gameState.snail.lastInteractionTime = now;
     } else {
-      console.log(`🐌 Snail interaction on cooldown (${5 - Math.floor((now - gameState.snail.lastInteractionTime) / 1000)} seconds left)`);
+      console.log(
+        `🐌 Snail interaction on cooldown (${5 - Math.floor((now - gameState.snail.lastInteractionTime) / 1000)} seconds left)`
+      );
     }
   }
 
@@ -1092,7 +1101,7 @@ function switchTurn() {
 
 // Initialize with Level 1 tilemap on server startup
 console.log('🎮 Initializing server with simplified map system...');
-loadNewMap('level2'); // TODO: Change to level1 after level 2 testing
+loadNewMap('level1'); // Start with Level 1 as intended
 
 // Console commands for testing
 console.log('\n🎮 TESTING COMMANDS:');
@@ -1764,7 +1773,7 @@ io.on('connection', socket => {
         gameState.playerItems = {}; // Clear items when game stops
         gameState.gameWon = false; // Reset win state
         gameState.levelTransition = null; // Clear any transitions
-        
+
         // Stop continuous snail movement
         stopContinuousSnailMovement();
 
@@ -1808,7 +1817,7 @@ function startContinuousSnailMovement() {
   if (snailMovementInterval) {
     clearInterval(snailMovementInterval);
   }
-  
+
   // Start continuous movement every 2 seconds
   snailMovementInterval = setInterval(() => {
     if (gameState.gameStarted && gameState.snail) {
@@ -1817,7 +1826,7 @@ function startContinuousSnailMovement() {
       broadcastCustomizedGameState();
     }
   }, 2000); // Move every 2 seconds
-  
+
   console.log('🐌 Started continuous snail movement (every 2 seconds)');
 }
 
