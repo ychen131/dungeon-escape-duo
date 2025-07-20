@@ -797,7 +797,20 @@ export class GameScene extends Phaser.Scene {
                 
                 // Play attack animation
                 if (data.attackerId.startsWith('slime')) {
+                    // Mark slime as attacking to prevent idle animation override
+                    (attackerSprite as any).isAttacking = true;
+                    
                     attackerSprite.play('slime_attack', true);
+                    
+                    // When attack animation completes, return to idle and clear attacking flag
+                    attackerSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                        (attackerSprite as any).isAttacking = false;
+                        // Return to idle animation
+                        attackerSprite.play('slime_idle');
+                        console.log(`🟢 Slime ${data.attackerId} attack completed, returning to idle`);
+                    });
+                    
+                    console.log(`🟢 Slime ${data.attackerId} started attack animation`);
                 } else if (textureKey === 'soldier') {
                     attackerSprite.play('soldier-attack', true);
                 } else if (textureKey === 'orc') {
@@ -1504,60 +1517,63 @@ export class GameScene extends Phaser.Scene {
                         (slimeSprite as any).lastServerUpdate = currentUpdateId;
                     }
                     
-                    // Determine animation based on slime state and movement
-                    let targetAnimation: string = 'slime_idle'; // Default to idle
-                    if (slime.isStunned) {
-                        targetAnimation = 'slime_stunned';
-                        (slimeSprite as any).isJumping = false;
+                    // Don't update animations if slime is currently attacking
+                    if (!(slimeSprite as any).isAttacking) {
+                        // Determine animation based on slime state and movement
+                        let targetAnimation: string = 'slime_idle'; // Default to idle
+                        if (slime.isStunned) {
+                            targetAnimation = 'slime_stunned';
+                            (slimeSprite as any).isJumping = false;
 
-                    } else if (positionChanged && isNewUpdate && !(slimeSprite as any).isJumping) {
-                        // Slime just moved in a NEW server update - play jump animation
-                        console.log(`🦘 JUMP TRIGGERED for Slime ${index}!`);
-                        targetAnimation = 'slime_jump';
-                        (slimeSprite as any).isJumping = true;
-                        console.log(`🟢 Slime ${index} JUMPING! New position in server update, playing jump animation`);
-                        
-                        // Add visual bounce effect for more noticeable jump
-                        const originalScale = slimeSprite.scaleX;
-                        this.tweens.add({
-                            targets: slimeSprite,
-                            scaleX: originalScale * 1.2,
-                            scaleY: originalScale * 1.2,
-                            duration: 200,
-                            yoyo: true,
-                            ease: 'Power2'
-                        });
-                        
-                        // After jump animation completes, return to idle
-                        if ((slimeSprite as any).jumpTimeout) {
-                            clearTimeout((slimeSprite as any).jumpTimeout);
-                        }
-                        
-                        (slimeSprite as any).jumpTimeout = setTimeout(() => {
-                            if (slimeSprite && slimeSprite.active) {
-                                // Always reset jumping state regardless of stunned status
-                                (slimeSprite as any).isJumping = false;
-                                (slimeSprite as any).jumpTimeout = null;
-                                
-                                // Only play idle if not stunned
-                                if (!slime.isStunned) {
-                                    slimeSprite.play('slime_idle');
-                                }
-                                console.log(`🟢 Slime ${index} jump completed, returning to idle`);
+                        } else if (positionChanged && isNewUpdate && !(slimeSprite as any).isJumping) {
+                            // Slime just moved in a NEW server update - play jump animation
+                            console.log(`🦘 JUMP TRIGGERED for Slime ${index}!`);
+                            targetAnimation = 'slime_jump';
+                            (slimeSprite as any).isJumping = true;
+                            console.log(`🟢 Slime ${index} JUMPING! New position in server update, playing jump animation`);
+                            
+                            // Add visual bounce effect for more noticeable jump
+                            const originalScale = slimeSprite.scaleX;
+                            this.tweens.add({
+                                targets: slimeSprite,
+                                scaleX: originalScale * 1.2,
+                                scaleY: originalScale * 1.2,
+                                duration: 200,
+                                yoyo: true,
+                                ease: 'Power2'
+                            });
+                            
+                            // After jump animation completes, return to idle
+                            if ((slimeSprite as any).jumpTimeout) {
+                                clearTimeout((slimeSprite as any).jumpTimeout);
                             }
-                        }, 875); // Animation duration (7 frames at 8 FPS = ~875ms)
-                    } else if (!(slimeSprite as any).isJumping) {
-                        // Default idle state (already set above)
-                        targetAnimation = 'slime_idle';
-                    }
-                    
-                    // Play animation if it's different from current or we need to start a new jump
-                    if (targetAnimation && (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation)) {
-                        slimeSprite.play(targetAnimation);
-                        if (targetAnimation === 'slime_jump') {
-                            console.log(`🦘 SLIME ${index + 1} NOW PLAYING JUMP ANIMATION (5th row frames 28-34 from slimeJump.png)!`);
+                            
+                            (slimeSprite as any).jumpTimeout = setTimeout(() => {
+                                if (slimeSprite && slimeSprite.active) {
+                                    // Always reset jumping state regardless of stunned status
+                                    (slimeSprite as any).isJumping = false;
+                                    (slimeSprite as any).jumpTimeout = null;
+                                    
+                                    // Only play idle if not stunned and not attacking
+                                    if (!slime.isStunned && !(slimeSprite as any).isAttacking) {
+                                        slimeSprite.play('slime_idle');
+                                    }
+                                    console.log(`🟢 Slime ${index} jump completed, returning to idle`);
+                                }
+                            }, 875); // Animation duration (7 frames at 8 FPS = ~875ms)
+                        } else if (!(slimeSprite as any).isJumping) {
+                            // Default idle state (already set above)
+                            targetAnimation = 'slime_idle';
                         }
-                    }
+                        
+                        // Play animation if it's different from current or we need to start a new jump
+                        if (targetAnimation && (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation)) {
+                            slimeSprite.play(targetAnimation);
+                            if (targetAnimation === 'slime_jump') {
+                                console.log(`🦘 SLIME ${index + 1} NOW PLAYING JUMP ANIMATION (5th row frames 28-34 from slimeJump.png)!`);
+                            }
+                        }
+                    } // Close the isAttacking check block
                     
                     // Handle sprite flipping based on movement direction (like players)
                     if (slime.lastMoveDirection) {
