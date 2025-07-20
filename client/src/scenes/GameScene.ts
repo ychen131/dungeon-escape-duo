@@ -1584,12 +1584,10 @@ export class GameScene extends Phaser.Scene {
 
         // Draw the snail (decorative NPC)
         if (this.serverGameState.snail) {
-            console.log('🐌 Client: Rendering snail at', this.serverGameState.snail);
             const coords = this.getTilePixelPosition(this.serverGameState.snail.x, this.serverGameState.snail.y);
             
             // Create or update animated snail sprite
             if (this.textures.exists('snail')) {
-                console.log('✅ Snail texture exists, creating sprite');
                 
                 let snailSprite = this.playerSprites['snail'] as Phaser.GameObjects.Sprite;
                 
@@ -1600,8 +1598,6 @@ export class GameScene extends Phaser.Scene {
                     snailSprite.setScale(1.2); // Slightly larger for better visibility
                     snailSprite.setDepth(89); // Above tiles, below players and other entities
                     this.playerSprites['snail'] = snailSprite;
-                    
-                    console.log(`🐌 Created centered snail sprite at tile (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) = pixel (${coords.x}, ${coords.y}) with tileSize ${coords.tileSize}`);
                     
                     // Initialize position tracking for smooth movement
                     (snailSprite as any).lastTileX = this.serverGameState.snail.x;
@@ -1615,7 +1611,6 @@ export class GameScene extends Phaser.Scene {
                     
                     if (oldTileX !== newTileX || oldTileY !== newTileY) {
                         // Position changed - animate smooth movement
-                        console.log(`🐌 Smooth movement: (${oldTileX}, ${oldTileY}) → (${newTileX}, ${newTileY})`);
                         
                         // Stop any existing movement tween
                         if ((snailSprite as any).moveTween) {
@@ -1631,7 +1626,6 @@ export class GameScene extends Phaser.Scene {
                             ease: 'Power2',
                             onComplete: () => {
                                 (snailSprite as any).moveTween = null;
-                                console.log(`🐌 Smooth movement completed to (${newTileX}, ${newTileY})`);
                             }
                         });
                         
@@ -1648,10 +1642,8 @@ export class GameScene extends Phaser.Scene {
                     snailSprite.play(targetAnimation);
                 }
                 
-                console.log(`🐌 Rendered animated snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) moving ${this.serverGameState.snail.direction === -1 ? 'left' : 'right'}`);
             } else {
                 // Fallback to orange circle if sprite not available
-                console.log('⚠️ Snail texture not found, using fallback orange circle');
                 const snailColor = 0xf39c12; // Orange
                 const snailIcon = '🐌';
                 const strokeColor = 0xe67e22;
@@ -1667,8 +1659,6 @@ export class GameScene extends Phaser.Scene {
                 }).setOrigin(0.5);
                 snailLabel.setDepth(90);
                 this.playerSprites['snail_label'] = snailLabel;
-                
-                console.log(`🐌 Rendered fallback snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
             }
         }
     }

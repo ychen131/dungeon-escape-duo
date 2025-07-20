@@ -1492,26 +1492,17 @@ io.on('connection', socket => {
           }
         }
 
-        // Check for active trap collision
+        // Check for active trap - allow movement first, then trigger death
+        let willDieOnTrap = false;
         if (gameState.trapDoors) {
           const trapAtTarget = gameState.trapDoors.find(
             trap => trap.x === newX && trap.y === newY && !trap.isOpen
           );
 
           if (trapAtTarget) {
-            console.log(
-              `Move blocked: ${playerId} tried to move onto active trap at (${newX}, ${newY}). A pressure plate must be activated first!`
-            );
-
-            // Send message to player about the trap
-            const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
-            if (socket) {
-              socket.emit('trapMessage', {
-                message: '🔴 Trap blocks your path! Someone must stand on a pressure plate.',
-              });
-            }
-
-            return; // Cannot move onto active trap
+            console.log(`Player ${playerId} will die by moving onto active trap at (${newX}, ${newY})!`);
+            willDieOnTrap = true;
+            // Don't return here - let the movement complete first
           }
         }
 
@@ -1615,7 +1606,7 @@ io.on('connection', socket => {
                   );
                   
                   // Check for deaths on newly activated trap
-                  if (!wasTrapOpen && trap.isOpen === false) {
+                  if (!wasTrapOpen && trap.isOpen) {
                     const trapX = trap.x;
                     const trapY = trap.y;
                     
@@ -1624,6 +1615,10 @@ io.on('connection', socket => {
                       const checkPlayer = gameState.players[deathPlayerId];
                       if (checkPlayer.x === trapX && checkPlayer.y === trapY) {
                         console.log(`Player ${deathPlayerId} died on a trap!`);
+                        
+                        // Set health to 0 before death
+                        checkPlayer.health = 0;
+                        
                         io.emit('playerDied', { playerId: deathPlayerId }); // Notify ALL clients
                         delete gameState.players[deathPlayerId];
                       }
@@ -1733,6 +1728,26 @@ io.on('connection', socket => {
           if (gameState.actionsRemaining <= 0) {
             switchTurn();
           }
+        }
+
+        // Handle trap death after movement is completed
+        if (willDieOnTrap) {
+          console.log(`Player ${playerId} died on active trap at (${player.x}, ${player.y})!`);
+          
+          // Set health to 0 before death
+          player.health = 0;
+          
+          // Broadcast movement first so player is visible on trap
+          broadcastCustomizedGameState();
+          
+          // Small delay to ensure movement is rendered, then trigger death
+          setTimeout(() => {
+            io.emit('playerDied', { playerId: playerId });
+            delete gameState.players[playerId];
+            broadcastCustomizedGameState();
+          }, 100); // 100ms delay for visual feedback
+          
+          return; // Don't broadcast again below
         }
 
         // Broadcast updated game state to all clients (customized for each)
