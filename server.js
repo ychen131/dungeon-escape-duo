@@ -1009,6 +1009,9 @@ function updateSlimes() {
         if (player.health <= 0) {
           console.log(`Player ${playerId} has been defeated!`);
           
+          // Broadcast health=0 first so all clients see it
+          broadcastCustomizedGameState();
+          
           // Send death notification to victim
           io.emit('playerDied', { playerId: playerId });
           
