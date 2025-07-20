@@ -68,6 +68,7 @@ interface GameState {
         stunDuration: number;
         lastMoveDirection?: string;
         health?: number;
+        id?: string;
     }>;
     snail?: {
         x: number;
@@ -156,7 +157,6 @@ export class GameScene extends Phaser.Scene {
         });
 
         // Load snail spritesheet - 144x192 pixels, 4 rows x 3 columns
-        console.log('🐌 Attempting to load snail spritesheet from snail.png');
         this.load.spritesheet('snail', 'snail.png', {
             frameWidth: 48, // 144px ÷ 3 columns = 48px per frame
             frameHeight: 48, // 192px ÷ 4 rows = 48px per frame
@@ -171,25 +171,25 @@ export class GameScene extends Phaser.Scene {
 
         // Load slime spritesheets - 560x504 pixels, 7 rows x 7 columns
         console.log('🟢 Attempting to load slime idle spritesheet from slime_idle.png');
-        this.load.spritesheet('slimeIdle', 'slime_idle.png', {
+        this.load.spritesheet('slimeIdle', '/slime_idle.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
 
         console.log('🟢 Attempting to load slime movement spritesheet from slime_move.png');
-        this.load.spritesheet('slimeMove', 'slime_move.png', {
+        this.load.spritesheet('slimeMove', '/slime_move.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
 
         console.log('🟢 Attempting to load slime jump spritesheet from slime_jump.png');
-        this.load.spritesheet('slimeJump', 'slime_jump.png', {
+        this.load.spritesheet('slimeJump', '/slime_jump.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
         
         console.log('🟢 Attempting to load slime attack spritesheet from slime_swallow.png');
-        this.load.spritesheet('slimeAttack', 'slime_swallow.png', {
+        this.load.spritesheet('slimeAttack', '/slime_swallow.png', {
             frameWidth: 80, // 1120px ÷ 14 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
@@ -200,10 +200,7 @@ export class GameScene extends Phaser.Scene {
             console.log('✅ Pressure plate spritesheet loaded successfully');
         });
 
-        // Add success logging for snail loading
-        this.load.on('filecomplete-spritesheet-snail', () => {
-            console.log('✅ Snail spritesheet loaded successfully');
-        });
+
 
         // Add success logging for spike trap loading
         this.load.on('filecomplete-spritesheet-spikeTrap', () => {
@@ -279,7 +276,6 @@ export class GameScene extends Phaser.Scene {
         
         // Debug: List all loaded textures
         console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
-        console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
         console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
         console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
         console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
@@ -620,9 +616,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Snail animations
-        console.log('🐌 Checking snail texture for animations. Exists?', this.textures.exists('snail'));
         if (this.textures.exists('snail')) {
-            console.log('🎭 Creating snail animations...');
             
             // Calculate frame indices (3 columns per row)
             // Row 2 (index 1) for left movement: frames 3, 4, 5
@@ -642,8 +636,6 @@ export class GameScene extends Phaser.Scene {
                     frameRate: 4,
                     repeat: -1 // Loop forever
                 });
-                
-                console.log('✅ Snail animations created successfully');
             } catch (error) {
                 console.error('❌ Error creating snail animations:', error);
             }
@@ -760,6 +752,14 @@ export class GameScene extends Phaser.Scene {
             }
             this.scene.start('EasterEggScene');
         });
+
+        // DEBUG: Press 'L' to fast forward to Level 2
+        this.input.keyboard?.on('keydown-L', () => {
+            console.log('🚀 DEBUG: Fast forwarding to Level 2!');
+            if (this.socket) {
+                this.socket.emit('debugLoadLevel', { level: 'level2' });
+            }
+        });
     }
 
     private setupSocketListeners() {
@@ -838,9 +838,6 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
-            console.log('🐌 RECEIVED SNAIL MESSAGE:', data.message);
-            console.log('🐌 Snail position:', data.snailPos);
-            
             // Display speech bubble above the snail in the game world
             this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
@@ -945,7 +942,6 @@ export class GameScene extends Phaser.Scene {
     private handleGameState(newGameState: GameState) {
         try {
             // console.log('📡 Received game state from server:', newGameState);
-            // console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
             
             if (!newGameState || typeof newGameState !== 'object') {
                 console.error('❌ Invalid game state received:', newGameState);
@@ -1104,14 +1100,14 @@ export class GameScene extends Phaser.Scene {
         // Store reference for cleanup
         this.playerSprites['snail_speech'] = speechText;
         
-        console.log(`🐌 Displaying speech: "${message}" at pixel (${coords.x}, ${textY})`);
+
         
         // Auto-remove after 5 seconds
         this.time.delayedCall(5000, () => {
             if (speechText && speechText.active) {
                 speechText.destroy();
                 delete this.playerSprites['snail_speech'];
-                console.log('🐌 Speech bubble removed after 5 seconds');
+    
             }
         });
     }
@@ -1546,34 +1542,60 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Draw the slimes
-        if (this.serverGameState.slimes) {
-            // Clean up any extra slime sprites if the count decreased
-            const currentSlimeCount = this.serverGameState.slimes.length;
-            let slimeIndex = currentSlimeCount;
-            while (this.playerSprites[`slime_${slimeIndex}`]) {
-                if (this.playerSprites[`slime_${slimeIndex}`]) {
-                    (this.playerSprites[`slime_${slimeIndex}`] as any).destroy();
-                    delete this.playerSprites[`slime_${slimeIndex}`];
+        // First, collect all valid slime IDs from the server
+        const validSlimeIds = new Set<string>();
+        if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
+            this.serverGameState.slimes.forEach((slime, index) => {
+                // Use the slime's actual ID if available, otherwise use index
+                const slimeId = slime.id || `slime_${index}`;
+                validSlimeIds.add(slimeId);
+            });
+        }
+        console.log(`🟢 Valid slime IDs from server:`, Array.from(validSlimeIds));
+        console.log(`🟢 Current slime sprites:`, Object.keys(this.playerSprites).filter(k => k.match(/^slime_\d+$/)));
+        
+        // Clean up any slime sprites that are no longer in the server state
+        // This runs whether slimes array is empty, undefined, or has items
+        Object.keys(this.playerSprites).forEach(spriteKey => {
+            if (spriteKey.match(/^slime_\d+$/)) {
+                // This is a slime sprite - check if it's still valid
+                if (!validSlimeIds.has(spriteKey)) {
+                    // This slime is no longer in the server state - remove it
+                    console.log(`🗑️ Removing dead slime sprite: ${spriteKey}`);
+                    
+                    if (this.playerSprites[spriteKey]) {
+                        (this.playerSprites[spriteKey] as any).destroy();
+                        delete this.playerSprites[spriteKey];
+                    }
+                    if (this.playerSprites[spriteKey + '_label']) {
+                        (this.playerSprites[spriteKey + '_label'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_label'];
+                    }
+                    if (this.playerSprites[spriteKey + '_health']) {
+                        (this.playerSprites[spriteKey + '_health'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_health'];
+                    }
+                    if (this.playerSprites[spriteKey + '_id']) {
+                        (this.playerSprites[spriteKey + '_id'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_id'];
+                    }
                 }
-                if (this.playerSprites[`slime_${slimeIndex}_label`]) {
-                    (this.playerSprites[`slime_${slimeIndex}_label`] as any).destroy();
-                    delete this.playerSprites[`slime_${slimeIndex}_label`];
-                }
-                if (this.playerSprites[`slime_${slimeIndex}_health`]) {
-                    (this.playerSprites[`slime_${slimeIndex}_health`] as any).destroy();
-                    delete this.playerSprites[`slime_${slimeIndex}_health`];
-                }
-                slimeIndex++;
             }
-            
+        });
+        
+        // Only draw slimes if they exist
+        if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
+                // Use the slime's actual ID if available, otherwise use index
+                const slimeId = slime.id || `slime_${index}`;
+                
                 // Create or update animated slime sprite
                 if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
-                    // console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
+                    // console.log('✅ Slime textures exist, creating sprite for slime', slimeId);
                     
-                    let slimeSprite = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Sprite;
+                    let slimeSprite = this.playerSprites[slimeId] as Phaser.GameObjects.Sprite;
                     
                     // If slime sprite doesn't exist or is wrong type, create it
                     if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
@@ -1582,7 +1604,7 @@ export class GameScene extends Phaser.Scene {
                         slimeSprite.setOrigin(0.5, 0.5);
                         slimeSprite.setScale(1.3); // Scale up for better visibility
                         slimeSprite.setDepth(90); // Above tiles but below players
-                        this.playerSprites[`slime_${index}`] = slimeSprite;
+                        this.playerSprites[slimeId] = slimeSprite;
                         
                         // Initialize position tracking for jump detection
                         // Use impossible coordinates to ensure first movement is detected
@@ -1602,8 +1624,25 @@ export class GameScene extends Phaser.Scene {
                         slimeSprite.setPosition(coords.x, coords.y);
                     }
                     
+                    // Update or create ID label to help identify slimes
+                    let idLabel = this.playerSprites[`${slimeId}_id`] as Phaser.GameObjects.Text;
+                    if (!idLabel) {
+                        idLabel = this.add.text(coords.x, coords.y - 50, `ID: ${slimeId}`, {
+                            fontSize: '12px',
+                            color: '#ffff00',
+                            fontFamily: 'Arial',
+                            stroke: '#000000',
+                            strokeThickness: 2
+                        });
+                        idLabel.setOrigin(0.5);
+                        idLabel.setDepth(92); // Above health text
+                        this.playerSprites[`${slimeId}_id`] = idLabel;
+                    } else {
+                        idLabel.setPosition(coords.x, coords.y - 50);
+                    }
+                    
                     // Update or create health display
-                    let healthText = this.playerSprites[`slime_${index}_health`] as Phaser.GameObjects.Text;
+                    let healthText = this.playerSprites[`${slimeId}_health`] as Phaser.GameObjects.Text;
                     if (!healthText) {
                         healthText = this.add.text(coords.x, coords.y - 35, '', {
                             fontSize: '14px',
@@ -1614,7 +1653,7 @@ export class GameScene extends Phaser.Scene {
                         });
                         healthText.setOrigin(0.5);
                         healthText.setDepth(91); // Above slime sprite
-                        this.playerSprites[`slime_${index}_health`] = healthText;
+                        this.playerSprites[`${slimeId}_health`] = healthText;
                     }
                     
                     // Update health text
@@ -1738,14 +1777,14 @@ export class GameScene extends Phaser.Scene {
                     let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
                     
                     // Create or update slime circle (fallback)
-                    let slimeCircle = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Arc;
-                    let slimeLabel = this.playerSprites[`slime_${index}_label`] as Phaser.GameObjects.Text;
+                    let slimeCircle = this.playerSprites[slimeId] as Phaser.GameObjects.Arc;
+                    let slimeLabel = this.playerSprites[`${slimeId}_label`] as Phaser.GameObjects.Text;
                     
                     if (!slimeCircle || !(slimeCircle instanceof Phaser.GameObjects.Arc)) {
                         slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
                         slimeCircle.setStrokeStyle(3, strokeColor);
                         slimeCircle.setDepth(90);
-                        this.playerSprites[`slime_${index}`] = slimeCircle;
+                        this.playerSprites[slimeId] = slimeCircle;
                     } else {
                         slimeCircle.setPosition(coords.x, coords.y);
                         slimeCircle.setFillStyle(slimeColor);
@@ -1758,7 +1797,7 @@ export class GameScene extends Phaser.Scene {
                             color: '#ffffff'
                         }).setOrigin(0.5);
                         slimeLabel.setDepth(91);
-                        this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                        this.playerSprites[`${slimeId}_label`] = slimeLabel;
                     } else {
                         slimeLabel.setPosition(coords.x, coords.y);
                         slimeLabel.setText(slimeIcon);
@@ -1870,6 +1909,14 @@ export class GameScene extends Phaser.Scene {
         const player = this.serverGameState.players[this.myPlayerId];
         if (!player) return;
 
+        console.log(`🎯 Client attempting attack - Player at (${player.x}, ${player.y}), Health: ${player.health}`);
+        console.log(`🟢 Client slimes:`, this.serverGameState.slimes?.map((s, i) => ({ 
+            id: `slime_${i}`, 
+            x: s.x, 
+            y: s.y, 
+            health: s.health 
+        })));
+
         // Check all four adjacent tiles for slimes
         const directions = [{x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0}];
 
@@ -1886,8 +1933,8 @@ export class GameScene extends Phaser.Scene {
             for (let i = 0; i < this.serverGameState.slimes.length; i++) {
                 const slime = this.serverGameState.slimes[i];
                 if (slime.x === targetTileX && slime.y === targetTileY) {
-                    // Found a slime to attack
-                    const slimeId = `slime_${i}`;
+                    // Found a slime to attack - use the slime's actual ID from server
+                    const slimeId = slime.id || `slime_${i}`; // Fallback to index if no ID
                     console.log(`Attempting to attack slime: ${slimeId}`);
                     this.socket.emit('playerAttack', { slimeId: slimeId });
                     return; // Only attack one slime per action
