@@ -1003,7 +1003,8 @@ export class GameScene extends Phaser.Scene {
                 // Level progression transition
                 this.updateStatus(message, '#3498db', '24px', 'bold');
                 this.updateItemDisplay(`🎯 Loading new level... Get ready for new challenges! 🎯`, '#9b59b6');
-                this.setVictoryBackground('linear-gradient(45deg, #3498db, #9b59b6, #3498db)');
+                // Remove the distracting background animation during level transitions
+                this.resetBackground();
             }
         }
         // Check for final game completion
@@ -1017,16 +1018,17 @@ export class GameScene extends Phaser.Scene {
             const levelName = this.serverGameState.levelProgression === 1 ? "Level 1" : "Level 2";
             this.updateStatus(`🎉 VICTORY! ${levelName.toUpperCase()} COMPLETE! 🎉`, '#f1c40f', '22px', 'bold');
             this.updateItemDisplay(`🌟 Excellent teamwork! Advancing to Level 2 in 5 seconds... 🌟`, '#27ae60');
-            this.setVictoryBackground('linear-gradient(45deg, #2c3e50, #34495e, #2c3e50)');
+            // Use a subtle dark background instead of animated gradient
+            this.setVictoryBackground('#2c3e50');
         }
         else if (playerCount === 1) {
             if (this.serverGameState.disconnectedPlayer) {
                 const disconnectedPlayerId = this.serverGameState.disconnectedPlayer.playerId.toUpperCase();
                 this.updateStatus(`⚠️ ${disconnectedPlayerId} disconnected! Waiting for reconnection... You are ${this.myPlayerId}`, '#e74c3c');
-                this.updateItemDisplay(`Game paused at Level ${this.serverGameState.levelProgression} | ${disconnectedPlayerId} has 30 seconds to reconnect`);
+                this.updateItemDisplay(`Game paused | ${disconnectedPlayerId} has 30 seconds to reconnect`);
             } else {
                 this.updateStatus(`⏳ Waiting for partner to join... You are ${this.myPlayerId}`, '#f39c12');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Partner needed to continue`);
+                this.updateItemDisplay(`Partner needed to continue`);
             }
             this.resetBackground();
         }
@@ -1036,29 +1038,17 @@ export class GameScene extends Phaser.Scene {
                 const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'PLAYER1' : 'PLAYER2';
                 const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
                 const turnMessage = isMyTurn 
-                    ? `⚔️ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Take your action!`
-                    : `⏳ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Wait for your partner...`;
+                    ? `You are ${this.myPlayerId} | Take your action!`
+                    : `You are ${this.myPlayerId} | Wait for your partner...`;
                 
                 const turnColor = isMyTurn ? '#f39c12' : '#95a5a6';
                 this.updateStatus(turnMessage, turnColor, '18px', isMyTurn ? 'bold' : 'normal');
                 
-                if (this.serverGameState.yourItem) {
-                    this.updateItemDisplay(`Your Item: ${this.serverGameState.yourItem} | Level ${this.serverGameState.levelProgression}`, '#3498db');
-                } else {
-                    // Check if player has used their douse fire for this level
-                    const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
-                                           this.myPlayerId && 
-                                           this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
-                    
-                    if (hasUsedDouseFire) {
-                        this.updateItemDisplay(`🔥 DOUSE FIRE USED UP! No more items until next level | Level ${this.serverGameState.levelProgression}`, '#e74c3c');
-                    } else {
-                        this.updateItemDisplay(`Level ${this.serverGameState.levelProgression}`, '#95a5a6');
-                    }
-                }
+                // Update the bottom display with level info only
+                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression}`, '#95a5a6');
             } else {
                 this.updateStatus(`🚀 Both players ready! You are ${this.myPlayerId}. Game starting...`, '#2ecc71');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Get ready to cooperate!`, '#2ecc71');
+                this.updateItemDisplay(`Get ready to cooperate!`, '#2ecc71');
             }
             this.resetBackground();
         }
@@ -2131,6 +2121,23 @@ export class GameScene extends Phaser.Scene {
                 turnElement.textContent = currentPlayer;
                 turnElement.style.color = isMyTurn ? '#2ecc71' : '#ecf0f1';
                 turnElement.style.fontWeight = isMyTurn ? 'bold' : 'normal';
+            }
+        }
+        
+        // Update douse fire count
+        const douseFireElement = document.getElementById('douse-fire-count');
+        if (douseFireElement) {
+            if (!this.serverGameState.gameStarted) {
+                douseFireElement.textContent = '-';
+            } else {
+                // Check if player has used their douse fire for this level
+                const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
+                                       this.myPlayerId && 
+                                       this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
+                
+                // Players get 1 douse fire at the start of each level
+                // Show 0 if they've used it, 1 if they haven't
+                douseFireElement.textContent = hasUsedDouseFire ? '0' : '1';
             }
         }
     }
