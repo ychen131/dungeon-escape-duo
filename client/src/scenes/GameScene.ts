@@ -1035,7 +1035,6 @@ export class GameScene extends Phaser.Scene {
         else if (playerCount === 2) {
             if (this.serverGameState.gameStarted) {
                 // Normal game state
-                const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'PLAYER1' : 'PLAYER2';
                 const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
                 const turnMessage = isMyTurn 
                     ? `You are ${this.myPlayerId} | Take your action!`
