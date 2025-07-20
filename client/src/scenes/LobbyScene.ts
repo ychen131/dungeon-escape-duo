@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 
 export class LobbyScene extends Phaser.Scene {
     private socket: any;
-    private waitingText?: Phaser.GameObjects.Text;
     
     constructor() {
         super({ key: 'LobbyScene' });
@@ -22,25 +21,18 @@ export class LobbyScene extends Phaser.Scene {
         const logo = this.add.image(centerX, centerY, 'game-logo');
         logo.setScale(0.5); // Scale down if needed
         
-        // Add waiting text below the logo
-        this.waitingText = this.add.text(centerX, centerY + 150, 'Waiting for another player...', {
-            fontSize: '24px',
-            color: '#95a5a6',
-            fontFamily: 'Arial'
-        }).setOrigin(0.5);
+        // Update the HTML status to show we're waiting for another player
+        const statusElement = document.getElementById('status');
+        if (statusElement) {
+            statusElement.textContent = 'Waiting for another player to join...';
+            statusElement.style.color = '#ecf0f1';
+        }
         
-        // Animate the waiting text with a subtle pulse
-        this.tweens.add({
-            targets: this.waitingText,
-            alpha: 0.5,
-            duration: 1000,
-            ease: 'Power1',
-            yoyo: true,
-            repeat: -1
-        });
-        
-        // Get socket connection
-        this.socket = (window as any).socket || (window as any).io();
+        const itemDisplayElement = document.getElementById('item-display');
+        if (itemDisplayElement) {
+            itemDisplayElement.textContent = 'The game will start automatically when both players are connected';
+            itemDisplayElement.style.color = '#95a5a6';
+        }
         
         // Get or create socket connection
         if (!this.socket || typeof this.socket !== 'object') {

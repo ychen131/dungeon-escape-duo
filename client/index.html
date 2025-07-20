@@ -35,11 +35,30 @@
         
         #game-container {
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         
         h1 {
             color: #ecf0f1;
             margin-bottom: 20px;
+        }
+        
+        /* Game wrapper to hold canvas and side buttons */
+        #game-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* Side button styling */
+        .side-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+            gap: 10px;
         }
         
         #status {
@@ -65,9 +84,9 @@
             font-size: 16px;
             border-radius: 5px;
             cursor: pointer;
-            margin-top: 15px;
             transition: background-color 0.3s ease;
             display: none; /* Hidden by default until game starts */
+            width: 100%;
         }
 
         #end-turn-btn:hover {
@@ -87,9 +106,8 @@
             font-size: 16px;
             border-radius: 5px;
             cursor: pointer;
-            margin-top: 15px;
-            margin-left: 10px;
             transition: background-color 0.3s ease;
+            width: 100%;
         }
 
         #rulesBtn:hover {
@@ -167,11 +185,15 @@
 <body>
     <div id="game-container">
         <h1>Dungeon Escape Duo</h1>
-        <div id="game"></div>
+        <div id="game-wrapper">
+            <div id="game"></div>
+            <div class="side-button">
+                <button id="end-turn-btn">End Turn</button>
+                <button id="rulesBtn">How to Play</button>
+            </div>
+        </div>
         <div id="status">Connecting to server...</div>
         <div id="item-display">Loading game...</div>
-        <button id="end-turn-btn">End Turn</button>
-        <button id="rulesBtn">How to Play</button>
     </div>
     
     <!-- Rules Modal -->

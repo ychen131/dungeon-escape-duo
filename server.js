@@ -900,8 +900,13 @@ function startGame() {
 
     console.log("Game started! Player 1's turn.");
 
-    // Emit gameStart event to all clients
-    io.emit('gameStart', gameState);
+    // Emit gameStart event to each client with customized state
+    for (const [playerId, player] of Object.entries(gameState.players)) {
+      const socket = io.sockets.sockets.get(player.socketId);
+      if (socket && socket.connected) {
+        socket.emit('gameStart', createCustomizedGameState(playerId));
+      }
+    }
 
     // Broadcast game start to all players (customized for each)
     broadcastCustomizedGameState();
