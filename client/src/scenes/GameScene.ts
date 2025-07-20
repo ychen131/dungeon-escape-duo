@@ -60,6 +60,7 @@ interface GameState {
         y: number;
         isStunned: boolean;
         stunDuration: number;
+        lastMoveDirection?: string;
     }>;
     snail?: {
         x: number;
@@ -77,6 +78,7 @@ export class GameScene extends Phaser.Scene {
     private socket: any;
     private serverGameState: GameState | null = null;
     private connectionRejected: boolean = false;
+
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
@@ -129,10 +131,82 @@ export class GameScene extends Phaser.Scene {
             frameHeight: 32, // 32px height
         });
 
+        // Load snail spritesheet - 144x192 pixels, 4 rows x 3 columns
+        console.log('🐌 Attempting to load snail spritesheet from snail.png');
+        this.load.spritesheet('snail', 'snail.png', {
+            frameWidth: 48, // 144px ÷ 3 columns = 48px per frame
+            frameHeight: 48, // 192px ÷ 4 rows = 48px per frame
+        });
+
+        // Load spike trap spritesheet - each frame is 32x32 pixels
+        console.log('🪤 Attempting to load spike trap spritesheet from Spike_Trap.png');
+        this.load.spritesheet('spikeTrap', 'Spike_Trap.png', {
+            frameWidth: 32, // Each frame is 32x32 pixels
+            frameHeight: 32
+        });
+
+        // Load slime spritesheets - 560x504 pixels, 7 rows x 7 columns
+        console.log('🟢 Attempting to load slime idle spritesheet from slime_idle.png');
+        this.load.spritesheet('slimeIdle', 'slime_idle.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
+        console.log('🟢 Attempting to load slime movement spritesheet from slime_move.png');
+        this.load.spritesheet('slimeMove', 'slime_move.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
+        console.log('🟢 Attempting to load slime jump spritesheet from slime_jump.png');
+        this.load.spritesheet('slimeJump', 'slime_jump.png', {
+            frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
+            frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
+        });
+
         
         // Add success logging for pressure plate loading
         this.load.on('filecomplete-spritesheet-pressurePlate', () => {
             console.log('✅ Pressure plate spritesheet loaded successfully');
+        });
+
+        // Add success logging for snail loading
+        this.load.on('filecomplete-spritesheet-snail', () => {
+            console.log('✅ Snail spritesheet loaded successfully');
+        });
+
+        // Add success logging for spike trap loading
+        this.load.on('filecomplete-spritesheet-spikeTrap', () => {
+            console.log('✅ Spike trap spritesheet loaded successfully');
+        });
+
+        // Add success logging for slime loading
+        this.load.on('filecomplete-spritesheet-slimeIdle', () => {
+            console.log('✅ Slime idle spritesheet loaded successfully');
+        });
+
+        this.load.on('filecomplete-spritesheet-slimeMove', () => {
+            console.log('✅ Slime movement spritesheet loaded successfully');
+        });
+
+        this.load.on('filecomplete-spritesheet-slimeJump', () => {
+            console.log('✅ Slime jump spritesheet loaded successfully');
+        });
+
+        // Add error logging for sprite loading
+        this.load.on('loaderror', (file: any) => {
+            if (file.key === 'snail') {
+                console.error(`❌ Failed to load snail sprite: ${file.key} from ${file.url}`);
+                console.error('Snail load error details:', file);
+            }
+            if (file.key === 'spikeTrap') {
+                console.error(`❌ Failed to load spike trap sprite: ${file.key} from ${file.url}`);
+                console.error('Spike trap load error details:', file);
+            }
+            if (file.key === 'slimeIdle' || file.key === 'slimeMove') {
+                console.error(`❌ Failed to load slime sprite: ${file.key} from ${file.url}`);
+                console.error('Slime load error details:', file);
+            }
         });
         
         // Keep loading individual tiles as backup for fallback mode
@@ -169,6 +243,14 @@ export class GameScene extends Phaser.Scene {
             });
         }
         
+        // Debug: List all loaded textures
+        console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
+        console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
+        console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
+                  console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
+          console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
+          console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
+        
         // Create character animations
         this.createCharacterAnimations();
         
@@ -185,10 +267,7 @@ export class GameScene extends Phaser.Scene {
         this.socket = (window as any).io(serverUrl);
         
         // Expose socket globally for testing
-                  (window as any).socket = this.socket;
-          console.log('🧪 Exposed socket to window for testing');
-          console.log('🔄 Use: socket.emit("resetPositions") to reset player positions');
-                  
+        (window as any).socket = this.socket;
         
         // Set up socket event listeners
         this.setupSocketListeners();
@@ -420,6 +499,121 @@ export class GameScene extends Phaser.Scene {
         } else {
             console.warn('⚠️ Pressure plate sprite sheet not loaded, skipping animations');
         }
+
+        // Snail animations
+        console.log('🐌 Checking snail texture for animations. Exists?', this.textures.exists('snail'));
+        if (this.textures.exists('snail')) {
+            console.log('🎭 Creating snail animations...');
+            
+            // Calculate frame indices (3 columns per row)
+            // Row 2 (index 1) for left movement: frames 3, 4, 5
+            // Row 3 (index 2) for right movement: frames 6, 7, 8
+            
+            try {
+                this.anims.create({
+                    key: 'snail_move_left',
+                    frames: this.anims.generateFrameNumbers('snail', { start: 3, end: 5 }), // Row 2 frames
+                    frameRate: 4,
+                    repeat: -1 // Loop forever
+                });
+                
+                this.anims.create({
+                    key: 'snail_move_right',
+                    frames: this.anims.generateFrameNumbers('snail', { start: 6, end: 8 }), // Row 3 frames
+                    frameRate: 4,
+                    repeat: -1 // Loop forever
+                });
+                
+                console.log('✅ Snail animations created successfully');
+            } catch (error) {
+                console.error('❌ Error creating snail animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Snail sprite sheet not loaded, skipping animations');
+        }
+
+        // Spike Trap animations
+        console.log('🪤 Checking spike trap texture for animations. Exists?', this.textures.exists('spikeTrap'));
+        if (this.textures.exists('spikeTrap')) {
+            console.log('🎭 Creating spike trap animations...');
+            
+            try {
+                // Safe state - spikes down (static frame 0)
+                this.anims.create({
+                    key: 'trap_safe',
+                    frames: [{ key: 'spikeTrap', frame: 0 }], // First frame - spikes down/safe
+                    frameRate: 1,
+                    repeat: 0
+                });
+                
+                // Dangerous state - animated spikes (loop through all 14 frames)
+                this.anims.create({
+                    key: 'trap_dangerous',
+                    frames: this.anims.generateFrameNumbers('spikeTrap', { start: 0, end: 13 }), // All 14 frames (0-13)
+                    frameRate: 8, // 8 FPS for smooth animation
+                    repeat: -1 // Loop forever
+                });
+                
+                console.log('✅ Spike trap animations created successfully - safe (static) and dangerous (14-frame loop)');
+            } catch (error) {
+                console.error('❌ Error creating spike trap animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Spike trap sprite sheet not loaded, skipping animations');
+        }
+
+        // Slime animations
+        console.log('🟢 Checking slime textures for animations. Idle exists?', this.textures.exists('slimeIdle'), 'Move exists?', this.textures.exists('slimeMove'), 'Jump exists?', this.textures.exists('slimeJump'));
+        if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove') && this.textures.exists('slimeJump')) {
+            console.log('🎭 Creating slime animations...');
+            
+            try {
+                // Calculate frame indices for 5th row (green slime)
+                // 7x7 grid, 5th row = row index 4, frames 28-34
+                const greenSlimeRowStart = 4 * 7; // Row 5 (index 4) × 7 columns = frame 28
+                const greenSlimeRowEnd = greenSlimeRowStart + 6; // frames 28-34 (7 frames)
+                
+                // Idle animation - green slime row from idle spritesheet
+                this.anims.create({
+                    key: 'slime_idle',
+                    frames: this.anims.generateFrameNumbers('slimeIdle', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 6,
+                    repeat: -1 // Loop forever
+                });
+                
+                // Movement animation - green slime row from movement spritesheet
+                this.anims.create({
+                    key: 'slime_move',
+                    frames: this.anims.generateFrameNumbers('slimeMove', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 8,
+                    repeat: -1 // Loop forever
+                });
+
+                // Jump animation - 5th row (green slime) from jump spritesheet
+                this.anims.create({
+                    key: 'slime_jump',
+                    frames: this.anims.generateFrameNumbers('slimeJump', { start: greenSlimeRowStart, end: greenSlimeRowEnd }),
+                    frameRate: 8, // Normal frame rate
+                    repeat: 0 // Play once
+                });
+                console.log(`✅ Slime jump animation created - frames ${greenSlimeRowStart} to ${greenSlimeRowEnd} from slimeJump texture (5th row, all 7 frames)`);
+                console.log(`🔍 ANIMATION SETUP: IDLE=5th row (${greenSlimeRowStart}-${greenSlimeRowEnd}) from slime_idle.png | JUMP=5th row (${greenSlimeRowStart}-${greenSlimeRowEnd}) from slime_jump.png`);
+                
+                // Stunned animation - static first frame from idle
+                this.anims.create({
+                    key: 'slime_stunned',
+                    frames: [{ key: 'slimeIdle', frame: greenSlimeRowStart }], // First frame of green slime row
+                    frameRate: 1,
+                    repeat: 0
+                });
+                
+                console.log('✅ Slime animations created successfully - idle, move, jump, and stunned (green slime row 5)');
+            } catch (error) {
+                console.error('❌ Error creating slime animations:', error);
+            }
+        } else {
+            console.warn('⚠️ Slime sprite sheets not loaded, skipping animations');
+        }
     }
 
     private setupKeyboardInput() {
@@ -507,13 +701,11 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
-            console.log('Snail message:', data.message);
-            this.updateStatus(data.message, '#f39c12', '16px', 'normal'); // Orange for snail interactions
+            console.log('🐌 RECEIVED SNAIL MESSAGE:', data.message);
+            console.log('🐌 Snail position:', data.snailPos);
             
-            // Clear the message after 4 seconds (slightly longer for NPC dialogue)
-            setTimeout(() => {
-                this.updateGameStatus(); // Restore normal status
-            }, 4000);
+            // Display speech bubble above the snail in the game world
+            this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
     }
 
@@ -555,6 +747,8 @@ export class GameScene extends Phaser.Scene {
 
     private updateGameStatus() {
         if (!this.serverGameState) return;
+        
+
 
         const playerCount = Object.keys(this.serverGameState.players).length;
         
@@ -641,6 +835,39 @@ export class GameScene extends Phaser.Scene {
             this.itemDisplayElement.textContent = text;
             this.itemDisplayElement.style.color = color;
         }
+    }
+
+    private displaySnailSpeech(message: string, snailX: number, snailY: number) {
+        // Calculate pixel position above the snail
+        const coords = this.getTilePixelPosition(snailX, snailY);
+        const textY = coords.y - 50; // Position text 50 pixels above the snail
+        
+        // Create the speech text
+        const speechText = this.add.text(coords.x, textY, message, {
+            fontSize: '14px',
+            color: '#ffffff',
+            fontFamily: 'Arial, sans-serif',
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center',
+            wordWrap: { width: 200 }
+        }).setOrigin(0.5);
+        
+        speechText.setDepth(200); // High depth to appear above everything
+        
+        // Store reference for cleanup
+        this.playerSprites['snail_speech'] = speechText;
+        
+        console.log(`🐌 Displaying speech: "${message}" at pixel (${coords.x}, ${textY})`);
+        
+        // Auto-remove after 5 seconds
+        this.time.delayedCall(5000, () => {
+            if (speechText && speechText.active) {
+                speechText.destroy();
+                delete this.playerSprites['snail_speech'];
+                console.log('🐌 Speech bubble removed after 5 seconds');
+            }
+        });
     }
 
     private updateEndTurnButton() {
@@ -764,6 +991,10 @@ export class GameScene extends Phaser.Scene {
         // Remove sprites for disconnected players
         for (const spriteKey of Object.keys(this.playerSprites)) {
             if (spriteKey.endsWith('_label')) continue;
+            
+            // Skip non-player entities (snail, slimes, traps, etc.)
+            if (spriteKey === 'snail' || spriteKey === 'snail_label' || spriteKey === 'snail_speech' ||
+                spriteKey.startsWith('slime_') || spriteKey.startsWith('trap_')) continue;
             
             const playerId = spriteKey;
             if (!this.serverGameState.players[playerId]) {
@@ -1003,54 +1234,259 @@ export class GameScene extends Phaser.Scene {
             this.serverGameState.trapDoors.forEach((trap, index) => {
                 const coords = this.getTilePixelPosition(trap.x, trap.y);
                 
-                // Determine trap appearance based on state
-                let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
-                let trapIcon = trap.isOpen ? '✅' : '❌';
-                let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
-                
-                const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
-                trapRect.setStrokeStyle(4, strokeColor);
-                trapRect.setDepth(85); // Same depth as pressure plate
-                this.playerSprites[`trap_${index}`] = trapRect;
-                
-                // Add trap label
-                const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
-                    fontSize: '20px',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
-                trapLabel.setDepth(86);
-                this.playerSprites[`trap_label_${index}`] = trapLabel;
-                
-                const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
-                console.log(`🚪 Rendered trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                // Create or update animated spike trap sprite
+                if (this.textures.exists('spikeTrap')) {
+                    console.log('✅ Spike trap texture exists, creating sprite for trap', index + 1);
+                    
+                    let trapSprite = this.playerSprites[`trap_${index}`] as Phaser.GameObjects.Sprite;
+                    
+                    // If trap sprite doesn't exist or is wrong type, create it
+                    if (!trapSprite || !(trapSprite instanceof Phaser.GameObjects.Sprite) || trapSprite.texture.key !== 'spikeTrap') {
+                        trapSprite = this.add.sprite(coords.x, coords.y, 'spikeTrap');
+                        trapSprite.setOrigin(0.6, 0.6); // Center the sprite exactly on the tile center
+                        trapSprite.setScale(1.3); // Slightly smaller scale for better centering
+                        trapSprite.setDepth(85); // Same depth as pressure plate
+                        this.playerSprites[`trap_${index}`] = trapSprite;
+                        
+                        console.log(`🪤 Created trap sprite at tile (${trap.x}, ${trap.y}) = pixel (${coords.x}, ${coords.y}), tileSize: ${coords.tileSize}`);
+                        
+                        // Start with the appropriate animation for initial state
+                        const initialAnimation = trap.isOpen ? 'trap_safe' : 'trap_dangerous';
+                        trapSprite.play(initialAnimation);
+                        console.log(`🪤 Started initial ${initialAnimation} animation for new trap ${index + 1}`);
+                    } else {
+                        // Update existing sprite position
+                        trapSprite.setPosition(coords.x, coords.y);
+                        trapSprite.setOrigin(0.6, 0.6); // Ensure origin stays centered (match creation origin)
+                    }
+                    
+                    // Play appropriate animation based on trap state
+                    // trap.isOpen = true (safe) → static spikes down → 'trap_safe'
+                    // trap.isOpen = false (dangerous) → animated spikes → 'trap_dangerous'
+                    const targetAnimation = trap.isOpen ? 'trap_safe' : 'trap_dangerous';
+                    if (!trapSprite.anims.currentAnim || trapSprite.anims.currentAnim.key !== targetAnimation) {
+                        trapSprite.play(targetAnimation);
+                        console.log(`🪤 Playing ${targetAnimation} animation for trap ${index + 1}`);
+                    }
+                    
+                    const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                    console.log(`🪤 Rendered animated spike trap ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                } else {
+                    // Fallback to rectangle if spike trap sprite not available
+                    console.log('⚠️ Spike trap texture not found, using fallback for trap', index + 1);
+                    
+                    // Determine trap appearance based on state
+                    let trapColor = trap.isOpen ? 0x2ecc71 : 0xe74c3c; // Green if open (safe), red if closed (dangerous)
+                    let trapIcon = trap.isOpen ? '✅' : '❌';
+                    let strokeColor = trap.isOpen ? 0x27ae60 : 0xc0392b;
+                    
+                    const trapRect = this.add.rectangle(coords.x, coords.y, 40, 40, trapColor);
+                    trapRect.setStrokeStyle(4, strokeColor);
+                    trapRect.setDepth(85);
+                    this.playerSprites[`trap_${index}`] = trapRect;
+                    
+                    // Add trap label
+                    const trapLabel = this.add.text(coords.x, coords.y, trapIcon, {
+                        fontSize: '20px',
+                        color: '#ffffff'
+                    }).setOrigin(0.5);
+                    trapLabel.setDepth(86);
+                    this.playerSprites[`trap_label_${index}`] = trapLabel;
+                    
+                    const trapState = trap.isOpen ? 'open (safe)' : 'closed (dangerous)';
+                    console.log(`🚪 Rendered fallback trap door ${index + 1} (${trapState}) at (${trap.x}, ${trap.y})`);
+                }
             });
         }
 
         // Draw the slimes
         if (this.serverGameState.slimes) {
+            // Clean up any extra slime sprites if the count decreased
+            const currentSlimeCount = this.serverGameState.slimes.length;
+            let slimeIndex = currentSlimeCount;
+            while (this.playerSprites[`slime_${slimeIndex}`]) {
+                if (this.playerSprites[`slime_${slimeIndex}`]) {
+                    (this.playerSprites[`slime_${slimeIndex}`] as any).destroy();
+                    delete this.playerSprites[`slime_${slimeIndex}`];
+                }
+                if (this.playerSprites[`slime_${slimeIndex}_label`]) {
+                    (this.playerSprites[`slime_${slimeIndex}_label`] as any).destroy();
+                    delete this.playerSprites[`slime_${slimeIndex}_label`];
+                }
+                slimeIndex++;
+            }
+            
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
-                // Determine slime appearance based on state
-                let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
-                let slimeIcon = slime.isStunned ? '😵' : '🟢';
-                let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
-                
-                const slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
-                slimeCircle.setStrokeStyle(3, strokeColor);
-                slimeCircle.setDepth(90); // Above tiles but below players
-                this.playerSprites[`slime_${index}`] = slimeCircle;
-                
-                // Add slime label
-                const slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
-                    fontSize: '18px',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
-                slimeLabel.setDepth(91);
-                this.playerSprites[`slime_${index}_label`] = slimeLabel;
-                
-                const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
-                console.log(`🟢 Rendered slime ${index} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                // Create or update animated slime sprite
+                if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
+                    console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
+                    
+                    let slimeSprite = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Sprite;
+                    
+                    // If slime sprite doesn't exist or is wrong type, create it
+                    if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
+                        (slimeSprite.texture.key !== 'slimeIdle' && slimeSprite.texture.key !== 'slimeMove' && slimeSprite.texture.key !== 'slimeJump')) {
+                        slimeSprite = this.add.sprite(coords.x, coords.y, 'slimeIdle');
+                        slimeSprite.setOrigin(0.5, 0.5);
+                        slimeSprite.setScale(1.3); // Scale up for better visibility
+                        slimeSprite.setDepth(90); // Above tiles but below players
+                        this.playerSprites[`slime_${index}`] = slimeSprite;
+                        
+                        // Initialize position tracking for jump detection
+                        // Use impossible coordinates to ensure first movement is detected
+                        (slimeSprite as any).lastTileX = -999;
+                        (slimeSprite as any).lastTileY = -999;
+                        (slimeSprite as any).isJumping = false;
+                        (slimeSprite as any).lastServerUpdate = 'initial'; // Track server updates
+                        
+                        console.log(`🟢 Created slime sprite at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
+                        
+                        // Start with the appropriate animation for initial state
+                        const initialAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
+                        slimeSprite.play(initialAnimation);
+                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${index + 1}`);
+                    } else {
+                        // Update existing sprite position
+                        slimeSprite.setPosition(coords.x, coords.y);
+                    }
+                    
+                    // Check if slime position changed (jumping between tiles)
+                    const oldTileX = (slimeSprite as any).lastTileX;
+                    const oldTileY = (slimeSprite as any).lastTileY;
+                    const positionChanged = (oldTileX !== slime.x || oldTileY !== slime.y);
+                    
+                    // Create unique update identifier to prevent duplicate processing
+                    const currentUpdateId = `${slime.x},${slime.y},${slime.isStunned ? 'stunned' : 'active'}`;
+                    const lastUpdateId = (slimeSprite as any).lastServerUpdate;
+                    const isNewUpdate = currentUpdateId !== lastUpdateId;
+                    
+                    // Only log when movement is detected to reduce noise
+                    if (positionChanged && isNewUpdate) {
+                        console.log(`🔍 Slime ${index} DETECTED MOVEMENT: (${oldTileX}, ${oldTileY}) → (${slime.x}, ${slime.y})`);
+                    }
+                    
+                    // Only log when there's actual movement
+                    if (positionChanged && isNewUpdate) {
+                        console.log(`🟢 Slime ${index} MOVED: old(${oldTileX},${oldTileY}) -> new(${slime.x},${slime.y})`);
+                    }
+                    
+                    // Only update stored position if this is a new server update
+                    if (isNewUpdate) {
+                        (slimeSprite as any).lastTileX = slime.x;
+                        (slimeSprite as any).lastTileY = slime.y;
+                        (slimeSprite as any).lastServerUpdate = currentUpdateId;
+                    }
+                    
+                    // Determine animation based on slime state and movement
+                    let targetAnimation: string = 'slime_idle'; // Default to idle
+                    if (slime.isStunned) {
+                        targetAnimation = 'slime_stunned';
+                        (slimeSprite as any).isJumping = false;
+
+                    } else if (positionChanged && isNewUpdate && !(slimeSprite as any).isJumping) {
+                        // Slime just moved in a NEW server update - play jump animation
+                        console.log(`🦘 JUMP TRIGGERED for Slime ${index}!`);
+                        targetAnimation = 'slime_jump';
+                        (slimeSprite as any).isJumping = true;
+                        console.log(`🟢 Slime ${index} JUMPING! New position in server update, playing jump animation`);
+                        
+                        // Add visual bounce effect for more noticeable jump
+                        const originalScale = slimeSprite.scaleX;
+                        this.tweens.add({
+                            targets: slimeSprite,
+                            scaleX: originalScale * 1.2,
+                            scaleY: originalScale * 1.2,
+                            duration: 200,
+                            yoyo: true,
+                            ease: 'Power2'
+                        });
+                        
+                        // After jump animation completes, return to idle
+                        if ((slimeSprite as any).jumpTimeout) {
+                            clearTimeout((slimeSprite as any).jumpTimeout);
+                        }
+                        
+                        (slimeSprite as any).jumpTimeout = setTimeout(() => {
+                            if (slimeSprite && slimeSprite.active) {
+                                // Always reset jumping state regardless of stunned status
+                                (slimeSprite as any).isJumping = false;
+                                (slimeSprite as any).jumpTimeout = null;
+                                
+                                // Only play idle if not stunned
+                                if (!slime.isStunned) {
+                                    slimeSprite.play('slime_idle');
+                                }
+                                console.log(`🟢 Slime ${index} jump completed, returning to idle`);
+                            }
+                        }, 875); // Animation duration (7 frames at 8 FPS = ~875ms)
+                    } else if (!(slimeSprite as any).isJumping) {
+                        // Default idle state (already set above)
+                        targetAnimation = 'slime_idle';
+                    }
+                    
+                    // Play animation if it's different from current or we need to start a new jump
+                    if (targetAnimation && (!slimeSprite.anims.currentAnim || slimeSprite.anims.currentAnim.key !== targetAnimation)) {
+                        slimeSprite.play(targetAnimation);
+                        if (targetAnimation === 'slime_jump') {
+                            console.log(`🦘 SLIME ${index + 1} NOW PLAYING JUMP ANIMATION (5th row frames 28-34 from slimeJump.png)!`);
+                        }
+                    }
+                    
+                    // Handle sprite flipping based on movement direction (like players)
+                    if (slime.lastMoveDirection) {
+                        switch (slime.lastMoveDirection) {
+                            case 'left':
+                                slimeSprite.setFlipX(true);
+                                break;
+                            case 'right':
+                                slimeSprite.setFlipX(false);
+                                break;
+                            // For up/down movement, keep the current flip state
+                        }
+                    }
+                    
+                    const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                    console.log(`🟢 Rendered animated slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                } else {
+                    // Fallback to circles if slime sprites not available
+                    console.log('⚠️ Slime textures not found, using fallback for slime', index + 1);
+                    
+                    let slimeColor = slime.isStunned ? 0x95a5a6 : 0x2ecc71; // Gray if stunned, green if active
+                    let slimeIcon = slime.isStunned ? '😵' : '🟢';
+                    let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
+                    
+                    // Create or update slime circle (fallback)
+                    let slimeCircle = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Arc;
+                    let slimeLabel = this.playerSprites[`slime_${index}_label`] as Phaser.GameObjects.Text;
+                    
+                    if (!slimeCircle || !(slimeCircle instanceof Phaser.GameObjects.Arc)) {
+                        slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
+                        slimeCircle.setStrokeStyle(3, strokeColor);
+                        slimeCircle.setDepth(90);
+                        this.playerSprites[`slime_${index}`] = slimeCircle;
+                    } else {
+                        slimeCircle.setPosition(coords.x, coords.y);
+                        slimeCircle.setFillStyle(slimeColor);
+                        slimeCircle.setStrokeStyle(3, strokeColor);
+                    }
+                    
+                    if (!slimeLabel || !(slimeLabel instanceof Phaser.GameObjects.Text)) {
+                        slimeLabel = this.add.text(coords.x, coords.y, slimeIcon, {
+                            fontSize: '18px',
+                            color: '#ffffff'
+                        }).setOrigin(0.5);
+                        slimeLabel.setDepth(91);
+                        this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                    } else {
+                        slimeLabel.setPosition(coords.x, coords.y);
+                        slimeLabel.setText(slimeIcon);
+                    }
+                    
+                    const slimeState = slime.isStunned ? `stunned (${slime.stunDuration} turns)` : 'active';
+                    console.log(`🟢 Rendered fallback slime ${index + 1} (${slimeState}) at (${slime.x}, ${slime.y})`);
+                }
             });
         }
 
@@ -1059,25 +1495,89 @@ export class GameScene extends Phaser.Scene {
             console.log('🐌 Client: Rendering snail at', this.serverGameState.snail);
             const coords = this.getTilePixelPosition(this.serverGameState.snail.x, this.serverGameState.snail.y);
             
-            // Snail appearance - friendly orange color
-            const snailColor = 0xf39c12; // Orange
-            const snailIcon = '🐌';
-            const strokeColor = 0xe67e22;
-            
-            const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
-            snailCircle.setStrokeStyle(2, strokeColor);
-            snailCircle.setDepth(89); // Above tiles, below players and other entities
-            this.playerSprites['snail'] = snailCircle;
-            
-            // Add snail label
-            const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
-                fontSize: '16px',
-                color: '#ffffff'
-            }).setOrigin(0.5);
-            snailLabel.setDepth(90);
-            this.playerSprites['snail_label'] = snailLabel;
-            
-            console.log(`🐌 Rendered snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
+            // Create or update animated snail sprite
+            if (this.textures.exists('snail')) {
+                console.log('✅ Snail texture exists, creating sprite');
+                
+                let snailSprite = this.playerSprites['snail'] as Phaser.GameObjects.Sprite;
+                
+                // If snail sprite doesn't exist or is wrong type, create it
+                if (!snailSprite || !(snailSprite instanceof Phaser.GameObjects.Sprite) || snailSprite.texture.key !== 'snail') {
+                    snailSprite = this.add.sprite(coords.x, coords.y, 'snail');
+                    snailSprite.setOrigin(0.5, 0.8); // Explicitly center both x and y origin like players
+                    snailSprite.setScale(1.2); // Slightly larger for better visibility
+                    snailSprite.setDepth(89); // Above tiles, below players and other entities
+                    this.playerSprites['snail'] = snailSprite;
+                    
+                    console.log(`🐌 Created centered snail sprite at tile (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) = pixel (${coords.x}, ${coords.y}) with tileSize ${coords.tileSize}`);
+                    
+                    // Initialize position tracking for smooth movement
+                    (snailSprite as any).lastTileX = this.serverGameState.snail.x;
+                    (snailSprite as any).lastTileY = this.serverGameState.snail.y;
+                } else {
+                    // Check if snail position has changed for smooth animation
+                    const oldTileX = (snailSprite as any).lastTileX;
+                    const oldTileY = (snailSprite as any).lastTileY;
+                    const newTileX = this.serverGameState.snail.x;
+                    const newTileY = this.serverGameState.snail.y;
+                    
+                    if (oldTileX !== newTileX || oldTileY !== newTileY) {
+                        // Position changed - animate smooth movement
+                        console.log(`🐌 Smooth movement: (${oldTileX}, ${oldTileY}) → (${newTileX}, ${newTileY})`);
+                        
+                        // Stop any existing movement tween
+                        if ((snailSprite as any).moveTween) {
+                            (snailSprite as any).moveTween.stop();
+                        }
+                        
+                        // Create smooth tween to new position
+                        (snailSprite as any).moveTween = this.tweens.add({
+                            targets: snailSprite,
+                            x: coords.x,
+                            y: coords.y,
+                            duration: 1500, // 1.5 seconds smooth movement (slightly less than 2s server interval)
+                            ease: 'Power2',
+                            onComplete: () => {
+                                (snailSprite as any).moveTween = null;
+                                console.log(`🐌 Smooth movement completed to (${newTileX}, ${newTileY})`);
+                            }
+                        });
+                        
+                        // Update stored position
+                        (snailSprite as any).lastTileX = newTileX;
+                        (snailSprite as any).lastTileY = newTileY;
+                    }
+                    // If position hasn't changed, don't move the sprite
+                }
+                
+                // Play appropriate animation based on direction
+                const targetAnimation = this.serverGameState.snail.direction === -1 ? 'snail_move_left' : 'snail_move_right';
+                if (!snailSprite.anims.currentAnim || snailSprite.anims.currentAnim.key !== targetAnimation) {
+                    snailSprite.play(targetAnimation);
+                }
+                
+                console.log(`🐌 Rendered animated snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y}) moving ${this.serverGameState.snail.direction === -1 ? 'left' : 'right'}`);
+            } else {
+                // Fallback to orange circle if sprite not available
+                console.log('⚠️ Snail texture not found, using fallback orange circle');
+                const snailColor = 0xf39c12; // Orange
+                const snailIcon = '🐌';
+                const strokeColor = 0xe67e22;
+                
+                const snailCircle = this.add.circle(coords.x, coords.y, 18, snailColor);
+                snailCircle.setStrokeStyle(2, strokeColor);
+                snailCircle.setDepth(89);
+                this.playerSprites['snail'] = snailCircle;
+                
+                const snailLabel = this.add.text(coords.x, coords.y, snailIcon, {
+                    fontSize: '16px',
+                    color: '#ffffff'
+                }).setOrigin(0.5);
+                snailLabel.setDepth(90);
+                this.playerSprites['snail_label'] = snailLabel;
+                
+                console.log(`🐌 Rendered fallback snail NPC at (${this.serverGameState.snail.x}, ${this.serverGameState.snail.y})`);
+            }
         }
     }
 

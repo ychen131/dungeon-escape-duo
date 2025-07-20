@@ -318,12 +318,14 @@ const LEVELS = {
           y: 6, // First slime - left side of map
           isStunned: false,
           stunDuration: 0,
+          lastMoveDirection: null, // Track direction for sprite flipping
         },
         {
           x: 18,
           y: 8, // Second slime - right side of map
           isStunned: false,
           stunDuration: 0,
+          lastMoveDirection: null, // Track direction for sprite flipping
         },
       ],
       snail: {
@@ -862,6 +864,9 @@ function startGame() {
     // Assign random items to players
     assignRandomItems();
 
+    // Start continuous snail movement
+    startContinuousSnailMovement();
+
     console.log("Game started! Player 1's turn.");
 
     // Broadcast game start to all players (customized for each)
@@ -903,14 +908,19 @@ function moveSlimeToward(slime, target) {
   let newY = slime.y;
 
   // Move one step toward target (simple AI)
+  let moveDirection = null;
   if (target.x > slime.x) {
     newX++;
+    moveDirection = 'right';
   } else if (target.x < slime.x) {
     newX--;
+    moveDirection = 'left';
   } else if (target.y > slime.y) {
     newY++;
+    moveDirection = 'down';
   } else if (target.y < slime.y) {
     newY--;
+    moveDirection = 'up';
   }
 
   // Check if the new position is valid (within bounds and not a wall)
@@ -941,10 +951,11 @@ function moveSlimeToward(slime, target) {
     return false; // Player is in the way
   }
 
-  // Valid move - update slime position
+  // Valid move - update slime position and direction
   slime.x = newX;
   slime.y = newY;
-  console.log(`🟢 Slime moved to (${newX}, ${newY}) pursuing player`);
+  slime.lastMoveDirection = moveDirection; // Store direction for sprite flipping
+  console.log(`🟢 Slime moved to (${newX}, ${newY}) facing ${moveDirection} pursuing player`);
   return true;
 }
 
@@ -1006,25 +1017,42 @@ function updateSnail() {
   const players = Object.values(gameState.players);
   const playersNearSnail = players.filter(player => {
     const distance = calculateDistance(gameState.snail, player);
+    console.log(
+      `🐌 Distance check: Player at (${player.x}, ${player.y}), Snail at (${gameState.snail.x}, ${gameState.snail.y}), Distance: ${distance}`
+    );
     return distance <= 1; // Player must be adjacent to snail
   });
 
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
-    const currentTurn = gameState.currentPlayerTurn === 'player1' ? 1 : 2;
-    if (gameState.snail.lastInteractionTurn !== currentTurn) {
-      const messages = ['Good Day, crawler.', 'Where is my key....'];
+    console.log(`🐌 ${playersNearSnail.length} player(s) near snail!`);
+
+    // Use timestamp-based cooldown instead of turn-based (5 seconds cooldown)
+    const now = Date.now();
+    if (!gameState.snail.lastInteractionTime || now - gameState.snail.lastInteractionTime > 5000) {
+      const messages = [
+        'Good Day, crawler.',
+        'Where is my key....',
+        'Have you seen any shiny objects?',
+        'The walls here are quite damp.',
+      ];
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
       console.log(`🐌 Snail says: "${randomMessage}"`);
 
       // Send message to all clients
-      io.emit('snailMessage', {
-        message: `🐌 Snail: "${randomMessage}"`,
+      const messageData = {
+        message: randomMessage,
         snailPos: { x: gameState.snail.x, y: gameState.snail.y },
-      });
+      };
+      console.log('🐌 EMITTING snailMessage event to all clients:', messageData);
+      io.emit('snailMessage', messageData);
 
-      gameState.snail.lastInteractionTurn = currentTurn;
+      gameState.snail.lastInteractionTime = now;
+    } else {
+      console.log(
+        `🐌 Snail interaction on cooldown (${5 - Math.floor((now - gameState.snail.lastInteractionTime) / 1000)} seconds left)`
+      );
     }
   }
 
@@ -1033,7 +1061,7 @@ function updateSnail() {
 
   // Check boundaries based on movement range
   const leftBound = gameState.snail.startX - gameState.snail.moveRange;
-  const rightBound = gameState.snail.startX;
+  const rightBound = gameState.snail.startX + 1; // Allow snail to reach startX position (4 tiles total)
 
   // Check if we hit a wall or boundary
   if (
@@ -1065,8 +1093,7 @@ function switchTurn() {
   // Update slimes after turn switch
   updateSlimes();
 
-  // Update snail after turn switch
-  updateSnail();
+  // Note: Snail now moves continuously via timer, not per turn
 
   // Broadcast updated game state after entity movement
   broadcastCustomizedGameState();
@@ -1074,7 +1101,7 @@ function switchTurn() {
 
 // Initialize with Level 1 tilemap on server startup
 console.log('🎮 Initializing server with simplified map system...');
-loadNewMap('level2'); // TODO: Change to level1 after level 2 testing
+loadNewMap('level1'); // Start with Level 1 as intended
 
 // Console commands for testing
 console.log('\n🎮 TESTING COMMANDS:');
@@ -1747,6 +1774,9 @@ io.on('connection', socket => {
         gameState.gameWon = false; // Reset win state
         gameState.levelTransition = null; // Clear any transitions
 
+        // Stop continuous snail movement
+        stopContinuousSnailMovement();
+
         // Add disconnect info to game state
         gameState.disconnectedPlayer = disconnectedPlayer;
 
@@ -1778,3 +1808,32 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Initialize continuous snail movement system
+let snailMovementInterval = null;
+
+function startContinuousSnailMovement() {
+  // Clear any existing interval
+  if (snailMovementInterval) {
+    clearInterval(snailMovementInterval);
+  }
+
+  // Start continuous movement every 2 seconds
+  snailMovementInterval = setInterval(() => {
+    if (gameState.gameStarted && gameState.snail) {
+      updateSnail();
+      // Broadcast state after snail movement
+      broadcastCustomizedGameState();
+    }
+  }, 2000); // Move every 2 seconds
+
+  console.log('🐌 Started continuous snail movement (every 2 seconds)');
+}
+
+function stopContinuousSnailMovement() {
+  if (snailMovementInterval) {
+    clearInterval(snailMovementInterval);
+    snailMovementInterval = null;
+    console.log('🐌 Stopped continuous snail movement');
+  }
+}
