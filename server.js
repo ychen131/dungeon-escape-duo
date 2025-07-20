@@ -825,16 +825,16 @@ function advanceToNextLevel() {
     // After showing the transition message, trigger the easter egg
     setTimeout(() => {
       gameState.levelTransition = null;
-      
+
       // Emit the easter egg event to all clients
       io.emit('showEasterEgg');
       console.log('🐱 Emitted showEasterEgg event to all clients');
-      
+
       // Reset game state for potential replay
       gameState.gameStarted = false;
       gameState.currentPlayerTurn = null;
       gameState.gameCompleted = false;
-      
+
       broadcastCustomizedGameState();
     }, 3000); // 3 second transition before easter egg
   }
@@ -1129,7 +1129,6 @@ function updateSnail() {
 
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
-
     // Use timestamp-based cooldown instead of turn-based (5 seconds cooldown)
     const now = Date.now();
     if (!gameState.snail.lastInteractionTime || now - gameState.snail.lastInteractionTime > 5000) {
@@ -1179,7 +1178,7 @@ function updateSnail() {
 // Helper function to switch turns and reset actions
 function switchTurn() {
   console.log(`🔄 SWITCHING TURN from ${gameState.currentPlayerTurn}...`);
-  
+
   gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
   gameState.actionsRemaining = 2; // Reset actions to 2 for the new turn
   console.log(
@@ -1198,7 +1197,7 @@ function switchTurn() {
   // Add delay to allow any ongoing animations to complete
   setTimeout(() => {
     updateSlimes();
-    
+
     console.log('📡 Broadcasting updated game state after turn switch and slime update...');
     // Broadcast updated game state after entity movement
     broadcastCustomizedGameState();
@@ -1718,7 +1717,7 @@ io.on('connection', socket => {
                       }
                       return true;
                     });
-                    
+
                     // Don't reassign IDs - keep them stable
                   }
                 }
@@ -1910,10 +1909,13 @@ io.on('connection', socket => {
     // Handle player attack requests
     socket.on('playerAttack', ({ slimeId }) => {
       const player = gameState.players[playerId];
-      
+
       console.log(`🎯 Player ${playerId} attempting to attack slime: ${slimeId}`);
-      console.log(`🟢 Available slimes:`, gameState.slimes?.map(s => ({ id: s.id, x: s.x, y: s.y, health: s.health })));
-      
+      console.log(
+        `🟢 Available slimes:`,
+        gameState.slimes?.map(s => ({ id: s.id, x: s.x, y: s.y, health: s.health }))
+      );
+
       const slime = gameState.slimes?.find(s => s.id === slimeId);
 
       if (!player || !slime || gameState.actionsRemaining <= 0) {
@@ -1936,7 +1938,7 @@ io.on('connection', socket => {
         if (slime.health <= 0) {
           gameState.slimes = gameState.slimes.filter(s => s.id !== slimeId);
           console.log(`Slime ${slime.id} defeated!`);
-          
+
           // Don't reassign IDs - keep them stable
           // This prevents confusion when tracking which slime is which
         }
@@ -1966,24 +1968,24 @@ io.on('connection', socket => {
     socket.on('debugLoadLevel', ({ level }) => {
       if (level === 'level2') {
         console.log(`🚀 DEBUG: Fast forwarding to Level 2 requested by ${playerId}`);
-        
+
         // Load level 2
         loadNewMap('level2', 0);
-        
+
         // Reset game state for the new level
         gameState.gameStarted = true;
         gameState.currentPlayerTurn = 'player1';
         gameState.actionsRemaining = 2;
-        
+
         // Ensure both players have starting items
         gameState.playerItems = {
           player1: ITEM_TYPES.DOUSE_FIRE,
-          player2: ITEM_TYPES.BUILD_BRIDGE
+          player2: ITEM_TYPES.BUILD_BRIDGE,
         };
-        
+
         // Broadcast the new state to all clients
         broadcastCustomizedGameState();
-        
+
         console.log('✅ DEBUG: Level 2 loaded successfully!');
       }
     });
