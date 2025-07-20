@@ -1003,7 +1003,8 @@ export class GameScene extends Phaser.Scene {
                 // Level progression transition
                 this.updateStatus(message, '#3498db', '24px', 'bold');
                 this.updateItemDisplay(`🎯 Loading new level... Get ready for new challenges! 🎯`, '#9b59b6');
-                this.setVictoryBackground('linear-gradient(45deg, #3498db, #9b59b6, #3498db)');
+                // Remove the distracting background animation during level transitions
+                this.resetBackground();
             }
         }
         // Check for final game completion
@@ -1017,16 +1018,17 @@ export class GameScene extends Phaser.Scene {
             const levelName = this.serverGameState.levelProgression === 1 ? "Level 1" : "Level 2";
             this.updateStatus(`🎉 VICTORY! ${levelName.toUpperCase()} COMPLETE! 🎉`, '#f1c40f', '22px', 'bold');
             this.updateItemDisplay(`🌟 Excellent teamwork! Advancing to Level 2 in 5 seconds... 🌟`, '#27ae60');
-            this.setVictoryBackground('linear-gradient(45deg, #2c3e50, #34495e, #2c3e50)');
+            // Use a subtle dark background instead of animated gradient
+            this.setVictoryBackground('#2c3e50');
         }
         else if (playerCount === 1) {
             if (this.serverGameState.disconnectedPlayer) {
                 const disconnectedPlayerId = this.serverGameState.disconnectedPlayer.playerId.toUpperCase();
                 this.updateStatus(`⚠️ ${disconnectedPlayerId} disconnected! Waiting for reconnection... You are ${this.myPlayerId}`, '#e74c3c');
-                this.updateItemDisplay(`Game paused at Level ${this.serverGameState.levelProgression} | ${disconnectedPlayerId} has 30 seconds to reconnect`);
+                this.updateItemDisplay(`Game paused | ${disconnectedPlayerId} has 30 seconds to reconnect`);
             } else {
                 this.updateStatus(`⏳ Waiting for partner to join... You are ${this.myPlayerId}`, '#f39c12');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Partner needed to continue`);
+                this.updateItemDisplay(`Partner needed to continue`);
             }
             this.resetBackground();
         }
@@ -1036,29 +1038,17 @@ export class GameScene extends Phaser.Scene {
                 const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'PLAYER1' : 'PLAYER2';
                 const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
                 const turnMessage = isMyTurn 
-                    ? `⚔️ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Take your action!`
-                    : `⏳ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Wait for your partner...`;
+                    ? `You are ${this.myPlayerId} | Take your action!`
+                    : `You are ${this.myPlayerId} | Wait for your partner...`;
                 
                 const turnColor = isMyTurn ? '#f39c12' : '#95a5a6';
                 this.updateStatus(turnMessage, turnColor, '18px', isMyTurn ? 'bold' : 'normal');
                 
-                if (this.serverGameState.yourItem) {
-                    this.updateItemDisplay(`Your Item: ${this.serverGameState.yourItem} | Level ${this.serverGameState.levelProgression}`, '#3498db');
-                } else {
-                    // Check if player has used their douse fire for this level
-                    const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
-                                           this.myPlayerId && 
-                                           this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
-                    
-                    if (hasUsedDouseFire) {
-                        this.updateItemDisplay(`🔥 DOUSE FIRE USED UP! No more items until next level | Level ${this.serverGameState.levelProgression}`, '#e74c3c');
-                    } else {
-                        this.updateItemDisplay(`Level ${this.serverGameState.levelProgression}`, '#95a5a6');
-                    }
-                }
+                // Update the bottom display with level info only
+                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression}`, '#95a5a6');
             } else {
                 this.updateStatus(`🚀 Both players ready! You are ${this.myPlayerId}. Game starting...`, '#2ecc71');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Get ready to cooperate!`, '#2ecc71');
+                this.updateItemDisplay(`Get ready to cooperate!`, '#2ecc71');
             }
             this.resetBackground();
         }
@@ -1555,48 +1545,109 @@ export class GameScene extends Phaser.Scene {
         console.log(`🟢 Valid slime IDs from server:`, Array.from(validSlimeIds));
         console.log(`🟢 Current slime sprites:`, Object.keys(this.playerSprites).filter(k => k.match(/^slime_\d+$/)));
         
+        // Create a copy of keys to avoid modification during iteration
+        const currentSpriteKeys = Object.keys(this.playerSprites);
+        
         // Clean up any slime sprites that are no longer in the server state
         // This runs whether slimes array is empty, undefined, or has items
-        Object.keys(this.playerSprites).forEach(spriteKey => {
+        currentSpriteKeys.forEach(spriteKey => {
             if (spriteKey.match(/^slime_\d+$/)) {
                 // This is a slime sprite - check if it's still valid
                 if (!validSlimeIds.has(spriteKey)) {
                     // This slime is no longer in the server state - remove it
                     console.log(`🗑️ Removing dead slime sprite: ${spriteKey}`);
                     
+                    // Destroy the main slime sprite
                     if (this.playerSprites[spriteKey]) {
-                        (this.playerSprites[spriteKey] as any).destroy();
+                        const slimeSprite = this.playerSprites[spriteKey];
+                        
+                        // Clear any pending jump timeout for this slime BEFORE destroying
+                        if ((slimeSprite as any).jumpTimeout) {
+                            clearTimeout((slimeSprite as any).jumpTimeout);
+                            (slimeSprite as any).jumpTimeout = null;
+                        }
+                        
+                        console.log(`🗑️ Destroying slime sprite: ${spriteKey}, type:`, slimeSprite.constructor.name, 'active:', (slimeSprite as any).active);
+                        
+                        // Make absolutely sure the sprite is removed
+                        (slimeSprite as any).setVisible(false);
+                        (slimeSprite as any).setActive(false);
+                        
+                        // Only call these methods if they exist (sprites have them, other objects might not)
+                        if ((slimeSprite as any).removeFromDisplayList) {
+                            (slimeSprite as any).removeFromDisplayList();
+                        }
+                        if ((slimeSprite as any).removeFromUpdateList) {
+                            (slimeSprite as any).removeFromUpdateList();
+                        }
+                        
+                        // Extra paranoid cleanup - remove from scene's display list
+                        const scene = (slimeSprite as any).scene;
+                        if (scene && scene.children && scene.children.exists(slimeSprite)) {
+                            console.log(`🔥 Force removing ${spriteKey} from scene display list`);
+                            scene.children.remove(slimeSprite);
+                        }
+                        
+                        (slimeSprite as any).destroy();
                         delete this.playerSprites[spriteKey];
+                        console.log(`✅ Slime sprite ${spriteKey} destroyed and deleted from playerSprites`);
                     }
+                    
+                    // Destroy the slime label (if it exists from fallback rendering)
                     if (this.playerSprites[spriteKey + '_label']) {
-                        (this.playerSprites[spriteKey + '_label'] as any).destroy();
+                        const labelSprite = this.playerSprites[spriteKey + '_label'];
+                        (labelSprite as any).setVisible(false);
+                        (labelSprite as any).destroy();
                         delete this.playerSprites[spriteKey + '_label'];
                     }
+                    
+                    // Destroy the health text
                     if (this.playerSprites[spriteKey + '_health']) {
-                        (this.playerSprites[spriteKey + '_health'] as any).destroy();
+                        const healthSprite = this.playerSprites[spriteKey + '_health'];
+                        (healthSprite as any).setVisible(false);
+                        (healthSprite as any).destroy();
                         delete this.playerSprites[spriteKey + '_health'];
                     }
-                    if (this.playerSprites[spriteKey + '_id']) {
-                        (this.playerSprites[spriteKey + '_id'] as any).destroy();
-                        delete this.playerSprites[spriteKey + '_id'];
-                    }
+                    
+                    // ID label cleanup removed - no longer creating ID labels
                 }
             }
         });
         
+        // Double-check all slime-related sprites are gone if no slimes exist
+        if (!this.serverGameState.slimes || this.serverGameState.slimes.length === 0) {
+            console.log(`🔍 No slimes in server state - verifying all slime sprites are cleaned up`);
+            // Get all display objects in the scene
+            const allChildren = this.children.list;
+            allChildren.forEach((child: any) => {
+                // Check if this might be a lingering slime sprite
+                if (child && child.texture && child.texture.key && 
+                    (child.texture.key === 'slimeIdle' || child.texture.key === 'slimeMove' || 
+                     child.texture.key === 'slimeJump' || child.texture.key === 'slimeAttack')) {
+                    console.log(`⚠️ Found orphaned slime sprite in scene! Destroying it.`);
+                    child.destroy();
+                }
+            });
+        }
+        
         // Only draw slimes if they exist
         if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
+            console.log(`🟢 Drawing ${this.serverGameState.slimes.length} slimes from server state`);
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
                 // Use the slime's actual ID if available, otherwise use index
                 const slimeId = slime.id || `slime_${index}`;
+                console.log(`🟢 Processing slime: index=${index}, slime.id=${slime.id}, using slimeId=${slimeId}`);
                 
                 // Create or update animated slime sprite
                 if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
                     // console.log('✅ Slime textures exist, creating sprite for slime', slimeId);
                     
                     let slimeSprite = this.playerSprites[slimeId] as Phaser.GameObjects.Sprite;
+                    
+                    // Check if this sprite key was just deleted
+                    console.log(`🔍 Checking if sprite ${slimeId} exists:`, !!slimeSprite);
                     
                     // If slime sprite doesn't exist or is wrong type, create it
                     if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
@@ -1614,38 +1665,23 @@ export class GameScene extends Phaser.Scene {
                         (slimeSprite as any).isJumping = false;
                         (slimeSprite as any).lastServerUpdate = 'initial'; // Track server updates
                         
-                        console.log(`🟢 Created slime sprite at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
+                        console.log(`🟢 Created NEW slime sprite ${slimeId} at tile (${slime.x}, ${slime.y}) = pixel (${coords.x}, ${coords.y})`);
                         
                         // Start with the appropriate animation for initial state
                         const initialAnimation = slime.isStunned ? 'slime_stunned' : 'slime_idle';
                         slimeSprite.play(initialAnimation);
-                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${index + 1}`);
+                        console.log(`🟢 Started initial ${initialAnimation} animation for new slime ${slimeId}`);
                     } else {
                         // Update existing sprite position
                         slimeSprite.setPosition(coords.x, coords.y);
                     }
                     
-                    // Update or create ID label to help identify slimes
-                    let idLabel = this.playerSprites[`${slimeId}_id`] as Phaser.GameObjects.Text;
-                    if (!idLabel) {
-                        idLabel = this.add.text(coords.x, coords.y - 50, `ID: ${slimeId}`, {
-                            fontSize: '12px',
-                            color: '#ffff00',
-                            fontFamily: 'Arial',
-                            stroke: '#000000',
-                            strokeThickness: 2
-                        });
-                        idLabel.setOrigin(0.5);
-                        idLabel.setDepth(92); // Above health text
-                        this.playerSprites[`${slimeId}_id`] = idLabel;
-                    } else {
-                        idLabel.setPosition(coords.x, coords.y - 50);
-                    }
+                    // ID labels removed - no longer needed for debugging
                     
                     // Update or create health display
                     let healthText = this.playerSprites[`${slimeId}_health`] as Phaser.GameObjects.Text;
                     if (!healthText) {
-                        healthText = this.add.text(coords.x, coords.y - 35, '', {
+                        healthText = this.add.text(coords.x, coords.y - 25, '', {
                             fontSize: '14px',
                             color: '#ff0000',
                             fontFamily: 'Arial',
@@ -1660,12 +1696,12 @@ export class GameScene extends Phaser.Scene {
                     // Update health text
                     if (slime.health !== undefined) {
                         healthText.setText(`HP: ${slime.health}`);
-                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setPosition(coords.x, coords.y - 25);
                         healthText.setVisible(true);
                     } else {
                         // Default to 2 if health not provided
                         healthText.setText(`HP: 2`);
-                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setPosition(coords.x, coords.y - 25);
                         healthText.setVisible(true);
                     }
                     
@@ -2064,6 +2100,23 @@ export class GameScene extends Phaser.Scene {
                 turnElement.textContent = currentPlayer;
                 turnElement.style.color = isMyTurn ? '#2ecc71' : '#ecf0f1';
                 turnElement.style.fontWeight = isMyTurn ? 'bold' : 'normal';
+            }
+        }
+        
+        // Update douse fire count
+        const douseFireElement = document.getElementById('douse-fire-count');
+        if (douseFireElement) {
+            if (!this.serverGameState.gameStarted) {
+                douseFireElement.textContent = '-';
+            } else {
+                // Check if player has used their douse fire for this level
+                const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
+                                       this.myPlayerId && 
+                                       this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
+                
+                // Players get 1 douse fire at the start of each level
+                // Show 0 if they've used it, 1 if they haven't
+                douseFireElement.textContent = hasUsedDouseFire ? '0' : '1';
             }
         }
     }

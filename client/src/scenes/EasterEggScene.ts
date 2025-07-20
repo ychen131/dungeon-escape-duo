@@ -111,7 +111,7 @@ export class EasterEggScene extends Phaser.Scene {
         sparkGraphics.destroy();
         
         // Add sparkle particles with the created texture
-        const particles = this.add.particles(0, 0, 'spark', {
+        this.add.particles(0, 0, 'spark', {
             x: { min: 0, max: this.cameras.main.width },
             y: { min: 0, max: this.cameras.main.height },
             scale: { start: 0.5, end: 0 },
