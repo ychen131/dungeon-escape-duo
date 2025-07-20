@@ -78,7 +78,7 @@ export class GameScene extends Phaser.Scene {
     private socket: any;
     private serverGameState: GameState | null = null;
     private connectionRejected: boolean = false;
-    private snailMessageActive: boolean = false; // Track if snail message is currently displayed
+
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
     private endTurnButton: HTMLElement | null = null;
@@ -704,15 +704,8 @@ export class GameScene extends Phaser.Scene {
             console.log('🐌 RECEIVED SNAIL MESSAGE:', data.message);
             console.log('🐌 Snail position:', data.snailPos);
             
-            // Set flag to prevent overwriting snail message
-            this.snailMessageActive = true;
-            this.updateStatus(data.message, '#f39c12', '16px', 'normal'); // Orange for snail interactions
-            
-            // Clear the message after 4 seconds (slightly longer for NPC dialogue)
-            setTimeout(() => {
-                this.snailMessageActive = false;
-                this.updateGameStatus(); // Restore normal status
-            }, 4000);
+            // Display speech bubble above the snail in the game world
+            this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
     }
 
@@ -755,11 +748,7 @@ export class GameScene extends Phaser.Scene {
     private updateGameStatus() {
         if (!this.serverGameState) return;
         
-        // Don't overwrite snail messages while they're being displayed
-        if (this.snailMessageActive) {
-            console.log('🐌 Snail message active, skipping status update');
-            return;
-        }
+
 
         const playerCount = Object.keys(this.serverGameState.players).length;
         
@@ -846,6 +835,39 @@ export class GameScene extends Phaser.Scene {
             this.itemDisplayElement.textContent = text;
             this.itemDisplayElement.style.color = color;
         }
+    }
+
+    private displaySnailSpeech(message: string, snailX: number, snailY: number) {
+        // Calculate pixel position above the snail
+        const coords = this.getTilePixelPosition(snailX, snailY);
+        const textY = coords.y - 50; // Position text 50 pixels above the snail
+        
+        // Create the speech text
+        const speechText = this.add.text(coords.x, textY, message, {
+            fontSize: '14px',
+            color: '#ffffff',
+            fontFamily: 'Arial, sans-serif',
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center',
+            wordWrap: { width: 200 }
+        }).setOrigin(0.5);
+        
+        speechText.setDepth(200); // High depth to appear above everything
+        
+        // Store reference for cleanup
+        this.playerSprites['snail_speech'] = speechText;
+        
+        console.log(`🐌 Displaying speech: "${message}" at pixel (${coords.x}, ${textY})`);
+        
+        // Auto-remove after 5 seconds
+        this.time.delayedCall(5000, () => {
+            if (speechText && speechText.active) {
+                speechText.destroy();
+                delete this.playerSprites['snail_speech'];
+                console.log('🐌 Speech bubble removed after 5 seconds');
+            }
+        });
     }
 
     private updateEndTurnButton() {
@@ -971,7 +993,7 @@ export class GameScene extends Phaser.Scene {
             if (spriteKey.endsWith('_label')) continue;
             
             // Skip non-player entities (snail, slimes, traps, etc.)
-            if (spriteKey === 'snail' || spriteKey === 'snail_label' || 
+            if (spriteKey === 'snail' || spriteKey === 'snail_label' || spriteKey === 'snail_speech' ||
                 spriteKey.startsWith('slime_') || spriteKey.startsWith('trap_')) continue;
             
             const playerId = spriteKey;
