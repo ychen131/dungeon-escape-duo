@@ -1619,7 +1619,20 @@ io.on('connection', socket => {
                         // Set health to 0 before death
                         checkPlayer.health = 0;
                         
-                        io.emit('playerDied', { playerId: deathPlayerId }); // Notify ALL clients
+                        // Broadcast health=0 first so all clients see it
+                        broadcastCustomizedGameState();
+                        
+                        // Send death notification to victim
+                        io.emit('playerDied', { playerId: deathPlayerId });
+                        
+                        // Send death message to other players
+                        const victimName = deathPlayerId === 'player1' ? 'Player 1' : 'Player 2';
+                        io.emit('deathMessage', { 
+                          message: `💀 ${victimName} died!`, 
+                          deadPlayerId: deathPlayerId 
+                        });
+                        
+                        // Remove player after messages are sent
                         delete gameState.players[deathPlayerId];
                       }
                     }
@@ -1670,6 +1683,10 @@ io.on('connection', socket => {
           plateActivationMessages.forEach(msg => {
             io.emit('pressurePlateMessage', msg);
           });
+          
+          // Broadcast position updates after pressure plate/trap logic
+          // This ensures all clients see movement before any death processing
+          broadcastCustomizedGameState();
         }
 
         // === KEY PICKUP LOGIC ===

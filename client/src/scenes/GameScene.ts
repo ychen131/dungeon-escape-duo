@@ -798,6 +798,20 @@ export class GameScene extends Phaser.Scene {
             console.log('Player died:', data.playerId);
             this.handleDeath(data.playerId);
         });
+        
+        this.socket.on('deathMessage', (data: { message: string; deadPlayerId: string }) => {
+            console.log('Death message:', data.message, 'for player:', data.deadPlayerId);
+            
+            // Only show message to other players (not the one who died)
+            if (data.deadPlayerId !== this.myPlayerId) {
+                this.updateStatus(data.message, '#ff6b35', '18px', 'bold'); // Orange color for death notifications
+                
+                // Clear the message after 5 seconds
+                setTimeout(() => {
+                    this.updateGameStatus(); // Restore normal status
+                }, 5000);
+            }
+        });
     }
 
     private handleGameState(newGameState: GameState) {
