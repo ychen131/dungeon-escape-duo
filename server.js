@@ -1035,7 +1035,7 @@ function updateSnail() {
 
       // Send message to all clients
       const messageData = {
-        message: `🐌 Snail: "${randomMessage}"`,
+        message: randomMessage,
         snailPos: { x: gameState.snail.x, y: gameState.snail.y },
       };
       console.log('🐌 EMITTING snailMessage event to all clients:', messageData);
