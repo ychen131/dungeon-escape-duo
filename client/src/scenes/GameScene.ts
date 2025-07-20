@@ -67,6 +67,7 @@ interface GameState {
         isStunned: boolean;
         stunDuration: number;
         lastMoveDirection?: string;
+        health?: number;
     }>;
     snail?: {
         x: number;
@@ -840,8 +841,20 @@ export class GameScene extends Phaser.Scene {
                     console.log(`🟢 Slime ${data.attackerId} started attack animation`);
                 } else if (textureKey === 'soldier') {
                     attackerSprite.play('soldier-attack', true);
+                    
+                    // When attack animation completes, return to idle
+                    attackerSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                        attackerSprite.play('soldier-idle');
+                        console.log(`Player ${data.attackerId} attack completed, returning to idle`);
+                    });
                 } else if (textureKey === 'orc') {
                     attackerSprite.play('orc-attack', true);
+                    
+                    // When attack animation completes, return to idle
+                    attackerSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                        attackerSprite.play('orc-idle');
+                        console.log(`Player ${data.attackerId} attack completed, returning to idle`);
+                    });
                 }
             }
         });
@@ -1484,6 +1497,10 @@ export class GameScene extends Phaser.Scene {
                     (this.playerSprites[`slime_${slimeIndex}_label`] as any).destroy();
                     delete this.playerSprites[`slime_${slimeIndex}_label`];
                 }
+                if (this.playerSprites[`slime_${slimeIndex}_health`]) {
+                    (this.playerSprites[`slime_${slimeIndex}_health`] as any).destroy();
+                    delete this.playerSprites[`slime_${slimeIndex}_health`];
+                }
                 slimeIndex++;
             }
             
@@ -1521,6 +1538,33 @@ export class GameScene extends Phaser.Scene {
                     } else {
                         // Update existing sprite position
                         slimeSprite.setPosition(coords.x, coords.y);
+                    }
+                    
+                    // Update or create health display
+                    let healthText = this.playerSprites[`slime_${index}_health`] as Phaser.GameObjects.Text;
+                    if (!healthText) {
+                        healthText = this.add.text(coords.x, coords.y - 35, '', {
+                            fontSize: '14px',
+                            color: '#ff0000',
+                            fontFamily: 'Arial',
+                            stroke: '#000000',
+                            strokeThickness: 2
+                        });
+                        healthText.setOrigin(0.5);
+                        healthText.setDepth(91); // Above slime sprite
+                        this.playerSprites[`slime_${index}_health`] = healthText;
+                    }
+                    
+                    // Update health text
+                    if (slime.health !== undefined) {
+                        healthText.setText(`HP: ${slime.health}`);
+                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setVisible(true);
+                    } else {
+                        // Default to 2 if health not provided
+                        healthText.setText(`HP: 2`);
+                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setVisible(true);
                     }
                     
                     // Check if slime position changed (jumping between tiles)
