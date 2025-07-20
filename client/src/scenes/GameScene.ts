@@ -67,6 +67,8 @@ interface GameState {
         isStunned: boolean;
         stunDuration: number;
         lastMoveDirection?: string;
+        health?: number;
+        id?: string;
     }>;
     snail?: {
         x: number;
@@ -84,6 +86,7 @@ export class GameScene extends Phaser.Scene {
     private socket: any;
     private serverGameState: GameState | null = null;
     private connectionRejected: boolean = false;
+    private initialGameState: GameState | null = null;
 
     private statusElement: HTMLElement | null = null;
     private itemDisplayElement: HTMLElement | null = null;
@@ -100,9 +103,18 @@ export class GameScene extends Phaser.Scene {
     private currentTileSize: number = 50; // Default tile size
     private currentMapOffsetX: number = 0; // Current map offset X
     private currentMapOffsetY: number = 0; // Current map offset Y
+    private backgroundMusic: Phaser.Sound.BaseSound | null = null;
 
     constructor() {
         super({ key: 'GameScene' });
+    }
+
+    init(data: { initialState?: GameState }) {
+        // Store initial state if coming from LobbyScene
+        if (data && data.initialState) {
+            this.initialGameState = data.initialState;
+            console.log('🎮 GameScene initialized with state from LobbyScene');
+        }
     }
 
     preload() {
@@ -112,6 +124,10 @@ export class GameScene extends Phaser.Scene {
         this.load.image('tiles', 'Full.png');
         this.load.tilemapTiledJSON('level1', 'level1.tmj');
         this.load.tilemapTiledJSON('level2', 'level2.tmj');
+        
+        // Load level background music
+        this.load.audio('level1_music', ['assets/audio/hero.mp3', 'assets/audio/hero.ogg']);
+        this.load.audio('level2_music', ['assets/audio/commando.mp3', 'assets/audio/commando.ogg']);
         
         // Load player character sprite sheets with correct dimensions
         console.log('🏃 Loading character sprite sheets...');
@@ -141,7 +157,6 @@ export class GameScene extends Phaser.Scene {
         });
 
         // Load snail spritesheet - 144x192 pixels, 4 rows x 3 columns
-        console.log('🐌 Attempting to load snail spritesheet from snail.png');
         this.load.spritesheet('snail', 'snail.png', {
             frameWidth: 48, // 144px ÷ 3 columns = 48px per frame
             frameHeight: 48, // 192px ÷ 4 rows = 48px per frame
@@ -156,25 +171,25 @@ export class GameScene extends Phaser.Scene {
 
         // Load slime spritesheets - 560x504 pixels, 7 rows x 7 columns
         console.log('🟢 Attempting to load slime idle spritesheet from slime_idle.png');
-        this.load.spritesheet('slimeIdle', 'slime_idle.png', {
+        this.load.spritesheet('slimeIdle', '/slime_idle.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
 
         console.log('🟢 Attempting to load slime movement spritesheet from slime_move.png');
-        this.load.spritesheet('slimeMove', 'slime_move.png', {
+        this.load.spritesheet('slimeMove', '/slime_move.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
 
         console.log('🟢 Attempting to load slime jump spritesheet from slime_jump.png');
-        this.load.spritesheet('slimeJump', 'slime_jump.png', {
+        this.load.spritesheet('slimeJump', '/slime_jump.png', {
             frameWidth: 80, // 560px ÷ 7 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
         
         console.log('🟢 Attempting to load slime attack spritesheet from slime_swallow.png');
-        this.load.spritesheet('slimeAttack', 'slime_swallow.png', {
+        this.load.spritesheet('slimeAttack', '/slime_swallow.png', {
             frameWidth: 80, // 1120px ÷ 14 columns = 80px per frame
             frameHeight: 72  // 504px ÷ 7 rows = 72px per frame
         });
@@ -185,10 +200,7 @@ export class GameScene extends Phaser.Scene {
             console.log('✅ Pressure plate spritesheet loaded successfully');
         });
 
-        // Add success logging for snail loading
-        this.load.on('filecomplete-spritesheet-snail', () => {
-            console.log('✅ Snail spritesheet loaded successfully');
-        });
+
 
         // Add success logging for spike trap loading
         this.load.on('filecomplete-spritesheet-spikeTrap', () => {
@@ -264,11 +276,10 @@ export class GameScene extends Phaser.Scene {
         
         // Debug: List all loaded textures
         console.log('🔍 Loaded textures:', Object.keys(this.textures.list));
-        console.log('🐌 Snail texture exists?', this.textures.exists('snail'));
         console.log('🪤 Spike trap texture exists?', this.textures.exists('spikeTrap'));
-                  console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
-          console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
-          console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
+        console.log('🟢 Slime idle texture exists?', this.textures.exists('slimeIdle'));
+        console.log('🟢 Slime move texture exists?', this.textures.exists('slimeMove'));
+        console.log('🟢 Slime jump texture exists?', this.textures.exists('slimeJump'));
         
         // Create character animations
         this.createCharacterAnimations();
@@ -279,17 +290,30 @@ export class GameScene extends Phaser.Scene {
         // Try to render the tilemap
         this.renderTilemap();
         
-        // Connect to server via global io function
-        // In development, connect to the Express server explicitly
-        const isDevelopment = import.meta.env.DEV;
-        const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
-        this.socket = (window as any).io(serverUrl);
+        // Check if we already have a socket from LobbyScene
+        this.socket = (window as any).socket;
         
-        // Expose socket globally for testing
-        (window as any).socket = this.socket;
+        if (!this.socket) {
+            // No existing socket, create new connection
+            const isDevelopment = import.meta.env.DEV;
+            const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
+            this.socket = (window as any).io(serverUrl);
+            
+            // Expose socket globally for testing
+            (window as any).socket = this.socket;
+        } else {
+            console.log('🔌 Using existing socket connection from LobbyScene');
+        }
         
         // Set up socket event listeners
         this.setupSocketListeners();
+        
+        // If we have initial game state from LobbyScene, handle it
+        if (this.initialGameState) {
+            console.log('🎯 Applying initial game state from LobbyScene');
+            this.handleGameState(this.initialGameState);
+            this.initialGameState = null; // Clear after use
+        }
         
         // Create health display
         this.healthText = this.add.text(10, 10, '', { 
@@ -301,7 +325,7 @@ export class GameScene extends Phaser.Scene {
         });
         this.healthText.setDepth(1000); // Always on top
     }
-
+    
     private destroyCurrentTilemap() {
         // Destroy all existing tilemap layers
         this.tilemapLayers.forEach(layer => {
@@ -312,7 +336,37 @@ export class GameScene extends Phaser.Scene {
         this.tilemapLayers = [];
         console.log('🧹 Destroyed existing tilemap layers');
     }
-
+    
+    private playLevelMusic(level: string) {
+        // Stop current music if playing
+        if (this.backgroundMusic) {
+            this.backgroundMusic.stop();
+            this.backgroundMusic = null;
+        }
+        
+        // Resume audio context if it's suspended (for WebAudio)
+        if ('context' in this.sound && (this.sound as any).context.state === 'suspended') {
+            (this.sound as any).context.resume();
+        }
+        
+        // Play appropriate music based on level
+        if (level === 'level1') {
+            this.backgroundMusic = this.sound.add('level1_music', {
+                loop: true,
+                volume: 0.3
+            });
+            this.backgroundMusic.play();
+            console.log('🎵 Playing Level 1 music (hero.ogg)');
+        } else if (level === 'level2') {
+            this.backgroundMusic = this.sound.add('level2_music', {
+                loop: true,
+                volume: 0.3
+            });
+            this.backgroundMusic.play();
+            console.log('🎵 Playing Level 2 music (commando.ogg)');
+        }
+    }
+    
     private renderTilemap(level: string = 'level1') {
         try {
             console.log(`🎯 Rendering tilemap for ${level}`);
@@ -562,9 +616,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Snail animations
-        console.log('🐌 Checking snail texture for animations. Exists?', this.textures.exists('snail'));
         if (this.textures.exists('snail')) {
-            console.log('🎭 Creating snail animations...');
             
             // Calculate frame indices (3 columns per row)
             // Row 2 (index 1) for left movement: frames 3, 4, 5
@@ -584,8 +636,6 @@ export class GameScene extends Phaser.Scene {
                     frameRate: 4,
                     repeat: -1 // Loop forever
                 });
-                
-                console.log('✅ Snail animations created successfully');
             } catch (error) {
                 console.error('❌ Error creating snail animations:', error);
             }
@@ -691,7 +741,25 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-DOWN', () => this.sendMoveRequest('down'));
         this.input.keyboard?.on('keydown-LEFT', () => this.sendMoveRequest('left'));
         this.input.keyboard?.on('keydown-RIGHT', () => this.sendMoveRequest('right'));
-        this.input.keyboard?.on('keydown-SPACE', () => this.sendUseItemRequest());
+        this.input.keyboard?.on('keydown-SPACE', () => this.handleAttack());
+        this.input.keyboard?.on('keydown-E', () => this.sendUseItemRequest());
+        
+        // DEBUG: Press 'N' to test the Nyan Cat Easter Egg
+        this.input.keyboard?.on('keydown-N', () => {
+            console.log('🎉 DEBUG: Triggering Easter Egg directly!');
+            if (this.backgroundMusic) {
+                this.backgroundMusic.stop();
+            }
+            this.scene.start('EasterEggScene');
+        });
+
+        // DEBUG: Press 'L' to fast forward to Level 2
+        this.input.keyboard?.on('keydown-L', () => {
+            console.log('🚀 DEBUG: Fast forwarding to Level 2!');
+            if (this.socket) {
+                this.socket.emit('debugLoadLevel', { level: 'level2' });
+            }
+        });
     }
 
     private setupSocketListeners() {
@@ -770,9 +838,6 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.socket.on('snailMessage', (data: { message: string; snailPos: { x: number; y: number } }) => {
-            console.log('🐌 RECEIVED SNAIL MESSAGE:', data.message);
-            console.log('🐌 Snail position:', data.snailPos);
-            
             // Display speech bubble above the snail in the game world
             this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
@@ -817,8 +882,20 @@ export class GameScene extends Phaser.Scene {
                     console.log(`🟢 Slime ${data.attackerId} started attack animation`);
                 } else if (textureKey === 'soldier') {
                     attackerSprite.play('soldier-attack', true);
+                    
+                    // When attack animation completes, return to idle
+                    attackerSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                        attackerSprite.play('soldier-idle');
+                        console.log(`Player ${data.attackerId} attack completed, returning to idle`);
+                    });
                 } else if (textureKey === 'orc') {
                     attackerSprite.play('orc-attack', true);
+                    
+                    // When attack animation completes, return to idle
+                    attackerSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+                        attackerSprite.play('orc-idle');
+                        console.log(`Player ${data.attackerId} attack completed, returning to idle`);
+                    });
                 }
             }
         });
@@ -826,6 +903,18 @@ export class GameScene extends Phaser.Scene {
         this.socket.on('playerDied', (data: { playerId: string }) => {
             console.log('Player died:', data.playerId);
             this.handleDeath(data.playerId);
+        });
+        
+        this.socket.on('showEasterEgg', () => {
+            console.log('🎉 Easter egg triggered! Transitioning to Nyan Cat scene...');
+            
+            // Stop any current game music
+            if (this.backgroundMusic) {
+                this.backgroundMusic.stop();
+            }
+            
+            // Transition to easter egg scene
+            this.scene.start('EasterEggScene');
         });
         
         this.socket.on('deathMessage', (data: { message: string; deadPlayerId: string }) => {
@@ -853,7 +942,6 @@ export class GameScene extends Phaser.Scene {
     private handleGameState(newGameState: GameState) {
         try {
             // console.log('📡 Received game state from server:', newGameState);
-            // console.log('🐌 Client: Snail data in received gameState:', newGameState.snail);
             
             if (!newGameState || typeof newGameState !== 'object') {
                 console.error('❌ Invalid game state received:', newGameState);
@@ -875,6 +963,12 @@ export class GameScene extends Phaser.Scene {
             if (levelChanged && newGameState.currentLevel) {
                 console.log(`🔄 Level changed to ${newGameState.currentLevel}, re-rendering tilemap`);
                 this.renderTilemap(newGameState.currentLevel);
+                this.playLevelMusic(newGameState.currentLevel);
+            }
+            
+            // Play music on initial load if we have a level
+            if (!levelChanged && newGameState.currentLevel && !this.backgroundMusic) {
+                this.playLevelMusic(newGameState.currentLevel);
             }
             
             this.updateGameStatus();
@@ -890,7 +984,8 @@ export class GameScene extends Phaser.Scene {
     private updateGameStatus() {
         if (!this.serverGameState) return;
         
-
+        // Update left sidebar elements
+        this.updateLeftSidebar();
 
         const playerCount = Object.keys(this.serverGameState.players).length;
         
@@ -931,27 +1026,24 @@ export class GameScene extends Phaser.Scene {
                 this.updateItemDisplay(`Game paused at Level ${this.serverGameState.levelProgression} | ${disconnectedPlayerId} has 30 seconds to reconnect`);
             } else {
                 this.updateStatus(`⏳ Waiting for partner to join... You are ${this.myPlayerId}`, '#f39c12');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1} | Partner needed to continue`);
+                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Partner needed to continue`);
             }
             this.resetBackground();
         }
         else if (playerCount === 2) {
             if (this.serverGameState.gameStarted) {
+                // Normal game state
+                const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'PLAYER1' : 'PLAYER2';
                 const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
+                const turnMessage = isMyTurn 
+                    ? `⚔️ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Take your action!`
+                    : `⏳ ${currentPlayer}'S TURN | ${this.serverGameState.actionsRemaining} actions left | You are ${this.myPlayerId} | Wait for your partner...`;
                 
-                if (isMyTurn) {
-                    const actionsText = this.serverGameState.actionsRemaining !== undefined ? 
-                        ` | ${this.serverGameState.actionsRemaining} actions left` : '';
-                    this.updateStatus(`🟢 YOUR TURN | You are ${this.myPlayerId}${actionsText} | Arrow keys: move, SPACE: use item`, '#2ecc71', '18px', 'bold');
-                } else {
-                    const otherPlayer = this.serverGameState.currentPlayerTurn?.toUpperCase();
-                    const actionsText = this.serverGameState.actionsRemaining !== undefined ? 
-                        ` | ${this.serverGameState.actionsRemaining} actions left` : '';
-                    this.updateStatus(`⏳ ${otherPlayer}'S TURN${actionsText} | You are ${this.myPlayerId} | Wait for your partner...`, '#f39c12');
-                }
+                const turnColor = isMyTurn ? '#f39c12' : '#95a5a6';
+                this.updateStatus(turnMessage, turnColor, '18px', isMyTurn ? 'bold' : 'normal');
                 
                 if (this.serverGameState.yourItem) {
-                    this.updateItemDisplay(`Your Item: ${this.serverGameState.yourItem} | Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#3498db');
+                    this.updateItemDisplay(`Your Item: ${this.serverGameState.yourItem} | Level ${this.serverGameState.levelProgression}`, '#3498db');
                 } else {
                     // Check if player has used their douse fire for this level
                     const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
@@ -959,14 +1051,14 @@ export class GameScene extends Phaser.Scene {
                                            this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
                     
                     if (hasUsedDouseFire) {
-                        this.updateItemDisplay(`🔥 DOUSE FIRE USED UP! No more items until next level | Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#e74c3c');
+                        this.updateItemDisplay(`🔥 DOUSE FIRE USED UP! No more items until next level | Level ${this.serverGameState.levelProgression}`, '#e74c3c');
                     } else {
-                        this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#95a5a6');
+                        this.updateItemDisplay(`Level ${this.serverGameState.levelProgression}`, '#95a5a6');
                     }
                 }
             } else {
                 this.updateStatus(`🚀 Both players ready! You are ${this.myPlayerId}. Game starting...`, '#2ecc71');
-                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1} | Get ready to cooperate!`, '#2ecc71');
+                this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} | Get ready to cooperate!`, '#2ecc71');
             }
             this.resetBackground();
         }
@@ -1009,14 +1101,14 @@ export class GameScene extends Phaser.Scene {
         // Store reference for cleanup
         this.playerSprites['snail_speech'] = speechText;
         
-        console.log(`🐌 Displaying speech: "${message}" at pixel (${coords.x}, ${textY})`);
+
         
         // Auto-remove after 5 seconds
         this.time.delayedCall(5000, () => {
             if (speechText && speechText.active) {
                 speechText.destroy();
                 delete this.playerSprites['snail_speech'];
-                console.log('🐌 Speech bubble removed after 5 seconds');
+    
             }
         });
     }
@@ -1451,30 +1543,60 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Draw the slimes
-        if (this.serverGameState.slimes) {
-            // Clean up any extra slime sprites if the count decreased
-            const currentSlimeCount = this.serverGameState.slimes.length;
-            let slimeIndex = currentSlimeCount;
-            while (this.playerSprites[`slime_${slimeIndex}`]) {
-                if (this.playerSprites[`slime_${slimeIndex}`]) {
-                    (this.playerSprites[`slime_${slimeIndex}`] as any).destroy();
-                    delete this.playerSprites[`slime_${slimeIndex}`];
+        // First, collect all valid slime IDs from the server
+        const validSlimeIds = new Set<string>();
+        if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
+            this.serverGameState.slimes.forEach((slime, index) => {
+                // Use the slime's actual ID if available, otherwise use index
+                const slimeId = slime.id || `slime_${index}`;
+                validSlimeIds.add(slimeId);
+            });
+        }
+        console.log(`🟢 Valid slime IDs from server:`, Array.from(validSlimeIds));
+        console.log(`🟢 Current slime sprites:`, Object.keys(this.playerSprites).filter(k => k.match(/^slime_\d+$/)));
+        
+        // Clean up any slime sprites that are no longer in the server state
+        // This runs whether slimes array is empty, undefined, or has items
+        Object.keys(this.playerSprites).forEach(spriteKey => {
+            if (spriteKey.match(/^slime_\d+$/)) {
+                // This is a slime sprite - check if it's still valid
+                if (!validSlimeIds.has(spriteKey)) {
+                    // This slime is no longer in the server state - remove it
+                    console.log(`🗑️ Removing dead slime sprite: ${spriteKey}`);
+                    
+                    if (this.playerSprites[spriteKey]) {
+                        (this.playerSprites[spriteKey] as any).destroy();
+                        delete this.playerSprites[spriteKey];
+                    }
+                    if (this.playerSprites[spriteKey + '_label']) {
+                        (this.playerSprites[spriteKey + '_label'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_label'];
+                    }
+                    if (this.playerSprites[spriteKey + '_health']) {
+                        (this.playerSprites[spriteKey + '_health'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_health'];
+                    }
+                    if (this.playerSprites[spriteKey + '_id']) {
+                        (this.playerSprites[spriteKey + '_id'] as any).destroy();
+                        delete this.playerSprites[spriteKey + '_id'];
+                    }
                 }
-                if (this.playerSprites[`slime_${slimeIndex}_label`]) {
-                    (this.playerSprites[`slime_${slimeIndex}_label`] as any).destroy();
-                    delete this.playerSprites[`slime_${slimeIndex}_label`];
-                }
-                slimeIndex++;
             }
-            
+        });
+        
+        // Only draw slimes if they exist
+        if (this.serverGameState.slimes && this.serverGameState.slimes.length > 0) {
             this.serverGameState.slimes.forEach((slime, index) => {
                 const coords = this.getTilePixelPosition(slime.x, slime.y);
                 
+                // Use the slime's actual ID if available, otherwise use index
+                const slimeId = slime.id || `slime_${index}`;
+                
                 // Create or update animated slime sprite
                 if (this.textures.exists('slimeIdle') && this.textures.exists('slimeMove')) {
-                    // console.log('✅ Slime textures exist, creating sprite for slime', index + 1);
+                    // console.log('✅ Slime textures exist, creating sprite for slime', slimeId);
                     
-                    let slimeSprite = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Sprite;
+                    let slimeSprite = this.playerSprites[slimeId] as Phaser.GameObjects.Sprite;
                     
                     // If slime sprite doesn't exist or is wrong type, create it
                     if (!slimeSprite || !(slimeSprite instanceof Phaser.GameObjects.Sprite) || 
@@ -1483,7 +1605,7 @@ export class GameScene extends Phaser.Scene {
                         slimeSprite.setOrigin(0.5, 0.5);
                         slimeSprite.setScale(1.3); // Scale up for better visibility
                         slimeSprite.setDepth(90); // Above tiles but below players
-                        this.playerSprites[`slime_${index}`] = slimeSprite;
+                        this.playerSprites[slimeId] = slimeSprite;
                         
                         // Initialize position tracking for jump detection
                         // Use impossible coordinates to ensure first movement is detected
@@ -1501,6 +1623,50 @@ export class GameScene extends Phaser.Scene {
                     } else {
                         // Update existing sprite position
                         slimeSprite.setPosition(coords.x, coords.y);
+                    }
+                    
+                    // Update or create ID label to help identify slimes
+                    let idLabel = this.playerSprites[`${slimeId}_id`] as Phaser.GameObjects.Text;
+                    if (!idLabel) {
+                        idLabel = this.add.text(coords.x, coords.y - 50, `ID: ${slimeId}`, {
+                            fontSize: '12px',
+                            color: '#ffff00',
+                            fontFamily: 'Arial',
+                            stroke: '#000000',
+                            strokeThickness: 2
+                        });
+                        idLabel.setOrigin(0.5);
+                        idLabel.setDepth(92); // Above health text
+                        this.playerSprites[`${slimeId}_id`] = idLabel;
+                    } else {
+                        idLabel.setPosition(coords.x, coords.y - 50);
+                    }
+                    
+                    // Update or create health display
+                    let healthText = this.playerSprites[`${slimeId}_health`] as Phaser.GameObjects.Text;
+                    if (!healthText) {
+                        healthText = this.add.text(coords.x, coords.y - 35, '', {
+                            fontSize: '14px',
+                            color: '#ff0000',
+                            fontFamily: 'Arial',
+                            stroke: '#000000',
+                            strokeThickness: 2
+                        });
+                        healthText.setOrigin(0.5);
+                        healthText.setDepth(91); // Above slime sprite
+                        this.playerSprites[`${slimeId}_health`] = healthText;
+                    }
+                    
+                    // Update health text
+                    if (slime.health !== undefined) {
+                        healthText.setText(`HP: ${slime.health}`);
+                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setVisible(true);
+                    } else {
+                        // Default to 2 if health not provided
+                        healthText.setText(`HP: 2`);
+                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setVisible(true);
                     }
                     
                     // Check if slime position changed (jumping between tiles)
@@ -1612,14 +1778,14 @@ export class GameScene extends Phaser.Scene {
                     let strokeColor = slime.isStunned ? 0x7f8c8d : 0x27ae60;
                     
                     // Create or update slime circle (fallback)
-                    let slimeCircle = this.playerSprites[`slime_${index}`] as Phaser.GameObjects.Arc;
-                    let slimeLabel = this.playerSprites[`slime_${index}_label`] as Phaser.GameObjects.Text;
+                    let slimeCircle = this.playerSprites[slimeId] as Phaser.GameObjects.Arc;
+                    let slimeLabel = this.playerSprites[`${slimeId}_label`] as Phaser.GameObjects.Text;
                     
                     if (!slimeCircle || !(slimeCircle instanceof Phaser.GameObjects.Arc)) {
                         slimeCircle = this.add.circle(coords.x, coords.y, 20, slimeColor);
                         slimeCircle.setStrokeStyle(3, strokeColor);
                         slimeCircle.setDepth(90);
-                        this.playerSprites[`slime_${index}`] = slimeCircle;
+                        this.playerSprites[slimeId] = slimeCircle;
                     } else {
                         slimeCircle.setPosition(coords.x, coords.y);
                         slimeCircle.setFillStyle(slimeColor);
@@ -1632,7 +1798,7 @@ export class GameScene extends Phaser.Scene {
                             color: '#ffffff'
                         }).setOrigin(0.5);
                         slimeLabel.setDepth(91);
-                        this.playerSprites[`slime_${index}_label`] = slimeLabel;
+                        this.playerSprites[`${slimeId}_label`] = slimeLabel;
                     } else {
                         slimeLabel.setPosition(coords.x, coords.y);
                         slimeLabel.setText(slimeIcon);
@@ -1744,6 +1910,14 @@ export class GameScene extends Phaser.Scene {
         const player = this.serverGameState.players[this.myPlayerId];
         if (!player) return;
 
+        console.log(`🎯 Client attempting attack - Player at (${player.x}, ${player.y}), Health: ${player.health}`);
+        console.log(`🟢 Client slimes:`, this.serverGameState.slimes?.map((s, i) => ({ 
+            id: `slime_${i}`, 
+            x: s.x, 
+            y: s.y, 
+            health: s.health 
+        })));
+
         // Check all four adjacent tiles for slimes
         const directions = [{x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0}];
 
@@ -1760,8 +1934,8 @@ export class GameScene extends Phaser.Scene {
             for (let i = 0; i < this.serverGameState.slimes.length; i++) {
                 const slime = this.serverGameState.slimes[i];
                 if (slime.x === targetTileX && slime.y === targetTileY) {
-                    // Found a slime to attack
-                    const slimeId = `slime_${i}`;
+                    // Found a slime to attack - use the slime's actual ID from server
+                    const slimeId = slime.id || `slime_${i}`; // Fallback to index if no ID
                     console.log(`Attempting to attack slime: ${slimeId}`);
                     this.socket.emit('playerAttack', { slimeId: slimeId });
                     return; // Only attack one slime per action
@@ -1852,6 +2026,45 @@ export class GameScene extends Phaser.Scene {
             this.healthText.setColor('#ffff00'); // Yellow for low health
         } else {
             this.healthText.setColor('#00ff00'); // Green for good health
+        }
+    }
+
+    private updateLeftSidebar() {
+        if (!this.serverGameState) return;
+
+        // Update room code
+        const roomCodeElement = document.getElementById('room-code');
+        if (roomCodeElement) {
+            // For now, use a placeholder - you might want to generate a real room code later
+            roomCodeElement.textContent = 'DEMO';
+        }
+
+        // Update current level
+        const levelElement = document.getElementById('current-level');
+        if (levelElement) {
+            const levelNum = this.serverGameState.levelProgression || 1;
+            levelElement.textContent = `Level ${levelNum}`;
+        }
+
+        // Update actions remaining
+        const actionsElement = document.getElementById('actions-left');
+        if (actionsElement) {
+            const actions = this.serverGameState.actionsRemaining || 0;
+            actionsElement.textContent = actions.toString();
+        }
+
+        // Update current turn
+        const turnElement = document.getElementById('current-turn');
+        if (turnElement) {
+            if (!this.serverGameState.gameStarted) {
+                turnElement.textContent = 'Waiting...';
+            } else {
+                const currentPlayer = this.serverGameState.currentPlayerTurn === 'player1' ? 'Player 1' : 'Player 2';
+                const isMyTurn = this.serverGameState.currentPlayerTurn === this.myPlayerId;
+                turnElement.textContent = currentPlayer;
+                turnElement.style.color = isMyTurn ? '#2ecc71' : '#ecf0f1';
+                turnElement.style.fontWeight = isMyTurn ? 'bold' : 'normal';
+            }
         }
     }
 

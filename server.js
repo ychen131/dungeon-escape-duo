@@ -314,6 +314,7 @@ const LEVELS = {
       ],
       slimes: [
         {
+          id: 'slime_0',
           x: 11,
           y: 6, // First slime - left side of map
           isStunned: false,
@@ -323,6 +324,7 @@ const LEVELS = {
           hasMoved: false, // Track if slime has acted this turn
         },
         {
+          id: 'slime_1',
           x: 18,
           y: 8, // Second slime - right side of map
           isStunned: false,
@@ -366,6 +368,7 @@ let GRID_HEIGHT = 8;
 // Item types that players can receive
 const ITEM_TYPES = {
   DOUSE_FIRE: 'Douse Fire',
+  BUILD_BRIDGE: 'Build Bridge',
 };
 
 // Tile types for rendering and logic
@@ -476,9 +479,9 @@ function loadNewMap(level = null) {
     }
     if (levelData.gameObjects.snail) {
       gameState.snail = { ...levelData.gameObjects.snail };
-      console.log('🐌 Snail loaded from level data:', gameState.snail);
+      gameState.snail.lastInteractionTurn = -1; // Initialize interaction tracking
     } else {
-      console.log('⚠️ No snail found in level data');
+      // Remove: console.log('⚠️ No snail found in level data');
     }
   }
 
@@ -629,17 +632,7 @@ function createCustomizedGameState(playerId) {
       yourItem: gameState.playerItems[playerId] || null,
     };
 
-    // Debug: Check if snail is included
-    if (customizedState.snail) {
-      console.log(
-        '🐌 Snail included in customized state for',
-        playerId,
-        ':',
-        customizedState.snail
-      );
-    } else {
-      console.log('⚠️ No snail in customized state for', playerId);
-    }
+    // Remove debug logging for snail
 
     // Remove sensitive data (other player's items)
     delete customizedState.playerItems;
@@ -780,6 +773,7 @@ function advanceToNextLevel() {
 
     // After transition delay, load Level 2
     setTimeout(() => {
+      // First load the new map which resets douse fire usage
       loadNewMap('level2');
 
       // Reset game state for new level
@@ -789,13 +783,6 @@ function advanceToNextLevel() {
       gameState.actionsRemaining = 2; // Reset actions for new level
       gameState.levelProgression = 2; // Update progression tracker
       gameState.levelTransition = null; // Clear transition state
-
-      // Reset douse fire availability for new level
-      gameState.douseFireUsed.player1 = false;
-      gameState.douseFireUsed.player2 = false;
-      console.log(
-        '🔥 Douse fire availability reset for new level - both players get 1 douse fire each'
-      );
 
       // Reset player positions to Level 2 starting positions
       if (gameState.players.player1) {
@@ -808,6 +795,7 @@ function advanceToNextLevel() {
       }
 
       // Assign new items for the new level
+      // loadNewMap already reset douseFireUsed, so items will be assigned properly
       assignRandomItems();
 
       console.log(`✨ Level 2 ready! Players reset to starting positions.`);
@@ -816,8 +804,9 @@ function advanceToNextLevel() {
       broadcastCustomizedGameState();
     }, 3000); // 3 second transition screen
   } else if (currentLevel === 'level2') {
-    // Completing Level 2 → Game Complete!
+    // Completing Level 2 → Game Complete! Show Easter Egg!
     console.log('🏆 GAME COMPLETED! Both levels mastered!');
+    console.log('🎉 Triggering Nyan Cat Easter Egg!');
 
     // Set final victory state
     gameState.gameCompleted = true;
@@ -833,11 +822,21 @@ function advanceToNextLevel() {
     // Broadcast final victory state
     broadcastCustomizedGameState();
 
-    // Clear the transition after a longer celebration
+    // After showing the transition message, trigger the easter egg
     setTimeout(() => {
       gameState.levelTransition = null;
+
+      // Emit the easter egg event to all clients
+      io.emit('showEasterEgg');
+      console.log('🐱 Emitted showEasterEgg event to all clients');
+
+      // Reset game state for potential replay
+      gameState.gameStarted = false;
+      gameState.currentPlayerTurn = null;
+      gameState.gameCompleted = false;
+
       broadcastCustomizedGameState();
-    }, 5000); // 5 second final celebration
+    }, 3000); // 3 second transition before easter egg
   }
 }
 
@@ -899,6 +898,14 @@ function startGame() {
     startContinuousSnailMovement();
 
     console.log("Game started! Player 1's turn.");
+
+    // Emit gameStart event to each client with customized state
+    for (const [playerId, player] of Object.entries(gameState.players)) {
+      const socket = io.sockets.sockets.get(player.socketId);
+      if (socket && socket.connected) {
+        socket.emit('gameStart', createCustomizedGameState(playerId));
+      }
+    }
 
     // Broadcast game start to all players (customized for each)
     broadcastCustomizedGameState();
@@ -1025,7 +1032,7 @@ function updateSlimes() {
         // Player is adjacent, ATTACK!
         player.health -= 1;
         console.log(
-          `Player ${playerId} was attacked by ${slime.id}! Health is now ${player.health}`
+          `🔴 SLIME ATTACK: Player ${playerId} was attacked by ${slime.id}! Health is now ${player.health}`
         );
         attacked = true;
         slime.hasMoved = true;
@@ -1042,6 +1049,7 @@ function updateSlimes() {
           attackDirection = slime.lastMoveDirection;
         }
 
+        console.log(`🔴 EMITTING playAttackAnimation for slime ${slime.id} attacking ${playerId}`);
         // Notify clients to play animation with direction
         io.emit('playAttackAnimation', {
           attackerId: slime.id,
@@ -1051,7 +1059,7 @@ function updateSlimes() {
 
         // Check for player death
         if (player.health <= 0) {
-          console.log(`Player ${playerId} has been defeated!`);
+          console.log(`💀 Player ${playerId} has been defeated!`);
 
           // Broadcast health=0 first so all clients see it
           broadcastCustomizedGameState();
@@ -1112,22 +1120,15 @@ function updateSnail() {
     return;
   }
 
-  console.log('🐌 Updating snail...');
-
   // Check for player interactions first
   const players = Object.values(gameState.players);
   const playersNearSnail = players.filter(player => {
     const distance = calculateDistance(gameState.snail, player);
-    console.log(
-      `🐌 Distance check: Player at (${player.x}, ${player.y}), Snail at (${gameState.snail.x}, ${gameState.snail.y}), Distance: ${distance}`
-    );
     return distance <= 1; // Player must be adjacent to snail
   });
 
   // If player is near and we haven't interacted recently, send message
   if (playersNearSnail.length > 0) {
-    console.log(`🐌 ${playersNearSnail.length} player(s) near snail!`);
-
     // Use timestamp-based cooldown instead of turn-based (5 seconds cooldown)
     const now = Date.now();
     if (!gameState.snail.lastInteractionTime || now - gameState.snail.lastInteractionTime > 5000) {
@@ -1139,21 +1140,14 @@ function updateSnail() {
       ];
       const randomMessage = messages[Math.floor(Math.random() * messages.length)];
 
-      console.log(`🐌 Snail says: "${randomMessage}"`);
-
       // Send message to all clients
       const messageData = {
         message: randomMessage,
         snailPos: { x: gameState.snail.x, y: gameState.snail.y },
       };
-      console.log('🐌 EMITTING snailMessage event to all clients:', messageData);
       io.emit('snailMessage', messageData);
 
       gameState.snail.lastInteractionTime = now;
-    } else {
-      console.log(
-        `🐌 Snail interaction on cooldown (${5 - Math.floor((now - gameState.snail.lastInteractionTime) / 1000)} seconds left)`
-      );
     }
   }
 
@@ -1175,16 +1169,16 @@ function updateSnail() {
   ) {
     // Reverse direction
     gameState.snail.direction *= -1;
-    console.log(`🐌 Snail hit boundary/wall, reversing direction`);
   } else {
     // Valid move
     gameState.snail.x = newX;
-    console.log(`🐌 Snail moved to (${gameState.snail.x}, ${gameState.snail.y})`);
   }
 }
 
 // Helper function to switch turns and reset actions
 function switchTurn() {
+  console.log(`🔄 SWITCHING TURN from ${gameState.currentPlayerTurn}...`);
+
   gameState.currentPlayerTurn = gameState.currentPlayerTurn === 'player1' ? 'player2' : 'player1';
   gameState.actionsRemaining = 2; // Reset actions to 2 for the new turn
   console.log(
@@ -1198,13 +1192,18 @@ function switchTurn() {
     });
   }
 
+  console.log('🟢 About to update slimes after turn switch...');
   // Update slimes after turn switch
-  updateSlimes();
+  // Add delay to allow any ongoing animations to complete
+  setTimeout(() => {
+    updateSlimes();
+
+    console.log('📡 Broadcasting updated game state after turn switch and slime update...');
+    // Broadcast updated game state after entity movement
+    broadcastCustomizedGameState();
+  }, 600); // 600ms delay to allow attack animations to complete
 
   // Note: Snail now moves continuously via timer, not per turn
-
-  // Broadcast updated game state after entity movement
-  broadcastCustomizedGameState();
 }
 
 // Initialize with Level 1 tilemap on server startup
@@ -1718,6 +1717,8 @@ io.on('connection', socket => {
                       }
                       return true;
                     });
+
+                    // Don't reassign IDs - keep them stable
                   }
                 }
               }
@@ -1908,12 +1909,19 @@ io.on('connection', socket => {
     // Handle player attack requests
     socket.on('playerAttack', ({ slimeId }) => {
       const player = gameState.players[playerId];
+
+      console.log(`🎯 Player ${playerId} attempting to attack slime: ${slimeId}`);
+      console.log(
+        `🟢 Available slimes:`,
+        gameState.slimes?.map(s => ({ id: s.id, x: s.x, y: s.y, health: s.health }))
+      );
+
       const slime = gameState.slimes?.find(s => s.id === slimeId);
 
-      if (!player || !slime || player.actionsRemaining <= 0) {
+      if (!player || !slime || gameState.actionsRemaining <= 0) {
         // Validation failed
         console.log(
-          `Attack rejected: player=${!!player}, slime=${!!slime}, actions=${player?.actionsRemaining}`
+          `Attack rejected: player=${!!player}, slime=${!!slime}, actions=${gameState.actionsRemaining}`
         );
         return;
       }
@@ -1930,10 +1938,13 @@ io.on('connection', socket => {
         if (slime.health <= 0) {
           gameState.slimes = gameState.slimes.filter(s => s.id !== slimeId);
           console.log(`Slime ${slime.id} defeated!`);
+
+          // Don't reassign IDs - keep them stable
+          // This prevents confusion when tracking which slime is which
         }
 
         // 4. Use up player's action
-        player.actionsRemaining -= 1;
+        gameState.actionsRemaining -= 1;
 
         // 5. Notify clients to play animation
         io.emit('playAttackAnimation', { attackerId: playerId, victimId: slimeId });
@@ -1942,11 +1953,40 @@ io.on('connection', socket => {
         broadcastCustomizedGameState();
 
         // 7. Auto-switch turns if no actions remaining
-        if (player.actionsRemaining <= 0) {
-          switchTurn();
+        if (gameState.actionsRemaining <= 0) {
+          // Add small delay to allow any triggered events (like trap activation) to complete
+          setTimeout(() => {
+            switchTurn();
+          }, 300); // 300ms delay
         }
       } else {
         console.log(`Attack rejected: slime not adjacent to player`);
+      }
+    });
+
+    // DEBUG: Handle debug level loading request
+    socket.on('debugLoadLevel', ({ level }) => {
+      if (level === 'level2') {
+        console.log(`🚀 DEBUG: Fast forwarding to Level 2 requested by ${playerId}`);
+
+        // Load level 2
+        loadNewMap('level2', 0);
+
+        // Reset game state for the new level
+        gameState.gameStarted = true;
+        gameState.currentPlayerTurn = 'player1';
+        gameState.actionsRemaining = 2;
+
+        // Ensure both players have starting items
+        gameState.playerItems = {
+          player1: ITEM_TYPES.DOUSE_FIRE,
+          player2: ITEM_TYPES.BUILD_BRIDGE,
+        };
+
+        // Broadcast the new state to all clients
+        broadcastCustomizedGameState();
+
+        console.log('✅ DEBUG: Level 2 loaded successfully!');
       }
     });
 
@@ -2075,14 +2115,11 @@ function startContinuousSnailMovement() {
       broadcastCustomizedGameState();
     }
   }, 2000); // Move every 2 seconds
-
-  console.log('🐌 Started continuous snail movement (every 2 seconds)');
 }
 
 function stopContinuousSnailMovement() {
   if (snailMovementInterval) {
     clearInterval(snailMovementInterval);
     snailMovementInterval = null;
-    console.log('🐌 Stopped continuous snail movement');
   }
 }

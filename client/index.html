@@ -35,11 +35,66 @@
         
         #game-container {
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         
         h1 {
             color: #ecf0f1;
             margin-bottom: 20px;
+            text-align: center;
+            width: 100%;
+        }
+        
+        /* Game wrapper to hold canvas and side buttons */
+        #game-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* Side button styling - now used for both left and right sidebars */
+        .side-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+            gap: 10px;
+        }
+        
+        /* Left sidebar styling */
+        .left-sidebar {
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+        
+        .left-sidebar h3 {
+            color: #3498db;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        
+        .left-sidebar .info-section {
+            background-color: #34495e;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+        
+        .left-sidebar .info-section p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        
+        .left-sidebar .info-section .label {
+            color: #95a5a6;
+        }
+        
+        .left-sidebar .info-section .value {
+            color: #ecf0f1;
+            font-weight: bold;
         }
         
         #status {
@@ -65,9 +120,9 @@
             font-size: 16px;
             border-radius: 5px;
             cursor: pointer;
-            margin-top: 15px;
             transition: background-color 0.3s ease;
             display: none; /* Hidden by default until game starts */
+            width: 100%;
         }
 
         #end-turn-btn:hover {
@@ -78,15 +133,145 @@
             background-color: #7f8c8d;
             cursor: not-allowed;
         }
+
+        #rulesBtn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 100%;
+        }
+
+        #rulesBtn:hover {
+            background-color: #2980b9;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+        }
+
+        .modal-content {
+            background-color: #34495e;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #2c3e50;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 10px;
+            color: #ecf0f1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .close-button {
+            color: #ecf0f1;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: #e74c3c;
+        }
+
+        .modal h2 {
+            color: #ecf0f1;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .modal h3 {
+            color: #3498db;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .modal ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .modal li {
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            background-color: #2c3e50;
+            border-radius: 5px;
+        }
+
+        .modal li b {
+            color: #3498db;
+        }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <h1>Dungeon Escape Duo</h1>
-        <div id="game"></div>
+        <div id="game-wrapper">
+            <div class="side-button left-sidebar">
+                <div class="info-section">
+                    <h3>Game Info</h3>
+                    <p><span class="label">Level:</span> <span class="value" id="current-level">-</span></p>
+                    <p><span class="label">Room Code:</span> <span class="value" id="room-code">-</span></p>
+                </div>
+                <div class="info-section">
+                    <h3>Actions</h3>
+                    <p><span class="label">Remaining:</span> <span class="value" id="actions-left">-</span></p>
+                    <p><span class="label">Turn:</span> <span class="value" id="current-turn">-</span></p>
+                </div>
+            </div>
+            <div id="game"></div>
+            <div class="side-button">
+                <button id="end-turn-btn">End Turn</button>
+                <button id="rulesBtn">How to Play</button>
+            </div>
+        </div>
         <div id="status">Connecting to server...</div>
         <div id="item-display">Loading game...</div>
-        <button id="end-turn-btn">End Turn</button>
+    </div>
+    
+    <!-- Rules Modal -->
+    <div id="rulesModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>How to Play Dungeon Escape Duo</h2>
+            <h3>Controls:</h3>
+            <ul>
+                <li><b>Arrow Keys:</b> Move your character</li>
+                <li><b>Spacebar:</b> Attack adjacent slime</li>
+                <li><b>E Key:</b> Use item / Interact with objects</li>
+            </ul>
+            <h3>Game Rules:</h3>
+            <ul>
+                <li>Each player gets <b>one move</b> and <b>one action</b> per turn</li>
+                <li>Work together to reach the exit!</li>
+                <li>Players die after <b>3 hits</b>. Slimes die after <b>2 hits</b></li>
+                <li>Watch out for traps - they'll kill you instantly!</li>
+                <li>Find keys to unlock doors</li>
+                <li>Stand on pressure plates to disable traps</li>
+                <li>Some items can only be used once per level</li>
+            </ul>
+            <h3>Tips:</h3>
+            <ul>
+                <li>Communicate with your partner!</li>
+                <li>Plan your moves carefully</li>
+                <li>Use items strategically</li>
+                <li>Remember: it's a team effort!</li>
+            </ul>
+        </div>
     </div>
     
     <!-- Socket.io client library -->
