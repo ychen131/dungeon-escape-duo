@@ -439,6 +439,11 @@ function loadNewMap(level = null) {
   gameState.gridHeight = GRID_HEIGHT;
   gameState.currentLevel = currentLevel;
 
+  // Reset douse fire availability when loading a new level
+  gameState.douseFireUsed.player1 = false;
+  gameState.douseFireUsed.player2 = false;
+  console.log(`🔥 Loading ${currentLevel}: Douse fire availability reset - both players get 1 douse fire each`);
+
   // Initialize level-specific game objects
   if (levelData.gameObjects) {
     // Deep copy game objects to avoid reference issues
@@ -521,6 +526,11 @@ const gameState = {
   gameWon: false, // Tracks if the game has been won (both players reached exit)
   currentLevel: currentLevel, // Current difficulty level
   levelProgression: 1, // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
+  // Per-level douse fire tracking - tracks if each player has used their douse fire for current level
+  douseFireUsed: {
+    player1: false, // true if player1 has used their douse fire for current level
+    player2: false, // true if player2 has used their douse fire for current level
+  },
   // Level-specific objects will be initialized by loadNewMap
   key: null,
   fires: null,
@@ -722,23 +732,24 @@ function checkDoorWinCondition() {
   return false;
 }
 
-// Helper function to assign random items to players
+// Helper function to assign items to players (respecting per-level douse fire limits)
 function assignRandomItems() {
   const levelData = LEVELS[currentLevel];
   const playerItems = levelData.playerItems;
 
   if (playerItems) {
-    gameState.playerItems.player1 = playerItems.player1;
-    gameState.playerItems.player2 = playerItems.player2;
+    // Check if each player can still get their douse fire item for this level
+    gameState.playerItems.player1 = gameState.douseFireUsed.player1 ? null : playerItems.player1;
+    gameState.playerItems.player2 = gameState.douseFireUsed.player2 ? null : playerItems.player2;
   } else {
-    // For other levels, assign random items
+    // For other levels, assign random items (this logic can be extended for other item types in future)
     const itemTypes = Object.values(ITEM_TYPES);
-    gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-    gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player1 = gameState.douseFireUsed.player1 ? null : itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player2 = gameState.douseFireUsed.player2 ? null : itemTypes[Math.floor(Math.random() * itemTypes.length)];
   }
 
   console.log(
-    `Items assigned - Player1: ${gameState.playerItems.player1}, Player2: ${gameState.playerItems.player2}`
+    `Items assigned - Player1: ${gameState.playerItems.player1 || 'NO ITEM'}, Player2: ${gameState.playerItems.player2 || 'NO ITEM'}`
   );
 }
 
@@ -772,6 +783,11 @@ function advanceToNextLevel() {
       gameState.actionsRemaining = 2; // Reset actions for new level
       gameState.levelProgression = 2; // Update progression tracker
       gameState.levelTransition = null; // Clear transition state
+      
+      // Reset douse fire availability for new level
+      gameState.douseFireUsed.player1 = false;
+      gameState.douseFireUsed.player2 = false;
+      console.log('🔥 Douse fire availability reset for new level - both players get 1 douse fire each');
 
       // Reset player positions to Level 2 starting positions
       if (gameState.players.player1) {
@@ -1181,7 +1197,7 @@ function switchTurn() {
 
 // Initialize with Level 1 tilemap on server startup
 console.log('🎮 Initializing server with simplified map system...');
-loadNewMap('level2'); // TODO: update to level 1!!Start with Level 1 as intended
+loadNewMap('level1'); // Start with Level 1 as intended
 
 // Console commands for testing
 console.log('\n🎮 TESTING COMMANDS:');
@@ -1385,6 +1401,14 @@ io.on('connection', socket => {
         }
 
         if (itemUsed) {
+          // Mark douse fire as used for this level if it was a douse fire item
+          if (item === ITEM_TYPES.DOUSE_FIRE) {
+            gameState.douseFireUsed[playerId] = true;
+            // Remove the item immediately since it's now used up for this level
+            gameState.playerItems[playerId] = null;
+            console.log(`🔥 ${playerId} has used their douse fire for this level and won't get another until next level`);
+          }
+
           // Decrement actions remaining after successful item use
           gameState.actionsRemaining--;
           console.log(

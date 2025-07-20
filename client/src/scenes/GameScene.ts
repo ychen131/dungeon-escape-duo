@@ -20,6 +20,10 @@ interface GameState {
     levelProgression?: number;
     currentLevel?: string;
     mapIndex?: number;
+    douseFireUsed?: {
+        player1: boolean;
+        player2: boolean;
+    };
     levelTransition?: {
         isTransitioning: boolean;
         fromLevel: string;
@@ -687,7 +691,7 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-DOWN', () => this.sendMoveRequest('down'));
         this.input.keyboard?.on('keydown-LEFT', () => this.sendMoveRequest('left'));
         this.input.keyboard?.on('keydown-RIGHT', () => this.sendMoveRequest('right'));
-        this.input.keyboard?.on('keydown-SPACE', () => this.handleAttack());
+        this.input.keyboard?.on('keydown-SPACE', () => this.sendUseItemRequest());
     }
 
     private setupSocketListeners() {
@@ -949,7 +953,16 @@ export class GameScene extends Phaser.Scene {
                 if (this.serverGameState.yourItem) {
                     this.updateItemDisplay(`Your Item: ${this.serverGameState.yourItem} | Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#3498db');
                 } else {
-                    this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#95a5a6');
+                    // Check if player has used their douse fire for this level
+                    const hasUsedDouseFire = this.serverGameState.douseFireUsed && 
+                                           this.myPlayerId && 
+                                           this.serverGameState.douseFireUsed[this.myPlayerId as keyof typeof this.serverGameState.douseFireUsed];
+                    
+                    if (hasUsedDouseFire) {
+                        this.updateItemDisplay(`🔥 DOUSE FIRE USED UP! No more items until next level | Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#e74c3c');
+                    } else {
+                        this.updateItemDisplay(`Level ${this.serverGameState.levelProgression} - ${this.serverGameState.currentLevel?.toUpperCase()} Layout ${(this.serverGameState.mapIndex || 0) + 1}`, '#95a5a6');
+                    }
                 }
             } else {
                 this.updateStatus(`🚀 Both players ready! You are ${this.myPlayerId}. Game starting...`, '#2ecc71');
