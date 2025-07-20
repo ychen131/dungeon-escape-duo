@@ -319,6 +319,8 @@ const LEVELS = {
           isStunned: false,
           stunDuration: 0,
           lastMoveDirection: null, // Track direction for sprite flipping
+          health: 2, // Slimes have 2 health points
+          hasMoved: false, // Track if slime has acted this turn
         },
         {
           x: 18,
@@ -326,6 +328,8 @@ const LEVELS = {
           isStunned: false,
           stunDuration: 0,
           lastMoveDirection: null, // Track direction for sprite flipping
+          health: 2, // Slimes have 2 health points
+          hasMoved: false, // Track if slime has acted this turn
         },
       ],
       snail: {
@@ -435,6 +439,13 @@ function loadNewMap(level = null) {
   gameState.gridHeight = GRID_HEIGHT;
   gameState.currentLevel = currentLevel;
 
+  // Reset douse fire availability when loading a new level
+  gameState.douseFireUsed.player1 = false;
+  gameState.douseFireUsed.player2 = false;
+  console.log(
+    `🔥 Loading ${currentLevel}: Douse fire availability reset - both players get 1 douse fire each`
+  );
+
   // Initialize level-specific game objects
   if (levelData.gameObjects) {
     // Deep copy game objects to avoid reference issues
@@ -458,7 +469,10 @@ function loadNewMap(level = null) {
       gameState.trapDoors = levelData.gameObjects.trapDoors.map(trap => ({ ...trap }));
     }
     if (levelData.gameObjects.slimes) {
-      gameState.slimes = levelData.gameObjects.slimes.map(slime => ({ ...slime }));
+      gameState.slimes = levelData.gameObjects.slimes.map((slime, i) => ({
+        ...slime,
+        id: `slime_${i}`, // Add unique ID for each slime
+      }));
     }
     if (levelData.gameObjects.snail) {
       gameState.snail = { ...levelData.gameObjects.snail };
@@ -514,6 +528,11 @@ const gameState = {
   gameWon: false, // Tracks if the game has been won (both players reached exit)
   currentLevel: currentLevel, // Current difficulty level
   levelProgression: 1, // Track overall progression: 1 = Level 1, 2 = Level 2, etc.
+  // Per-level douse fire tracking - tracks if each player has used their douse fire for current level
+  douseFireUsed: {
+    player1: false, // true if player1 has used their douse fire for current level
+    player2: false, // true if player2 has used their douse fire for current level
+  },
   // Level-specific objects will be initialized by loadNewMap
   key: null,
   fires: null,
@@ -715,23 +734,28 @@ function checkDoorWinCondition() {
   return false;
 }
 
-// Helper function to assign random items to players
+// Helper function to assign items to players (respecting per-level douse fire limits)
 function assignRandomItems() {
   const levelData = LEVELS[currentLevel];
   const playerItems = levelData.playerItems;
 
   if (playerItems) {
-    gameState.playerItems.player1 = playerItems.player1;
-    gameState.playerItems.player2 = playerItems.player2;
+    // Check if each player can still get their douse fire item for this level
+    gameState.playerItems.player1 = gameState.douseFireUsed.player1 ? null : playerItems.player1;
+    gameState.playerItems.player2 = gameState.douseFireUsed.player2 ? null : playerItems.player2;
   } else {
-    // For other levels, assign random items
+    // For other levels, assign random items (this logic can be extended for other item types in future)
     const itemTypes = Object.values(ITEM_TYPES);
-    gameState.playerItems.player1 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-    gameState.playerItems.player2 = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player1 = gameState.douseFireUsed.player1
+      ? null
+      : itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    gameState.playerItems.player2 = gameState.douseFireUsed.player2
+      ? null
+      : itemTypes[Math.floor(Math.random() * itemTypes.length)];
   }
 
   console.log(
-    `Items assigned - Player1: ${gameState.playerItems.player1}, Player2: ${gameState.playerItems.player2}`
+    `Items assigned - Player1: ${gameState.playerItems.player1 || 'NO ITEM'}, Player2: ${gameState.playerItems.player2 || 'NO ITEM'}`
   );
 }
 
@@ -765,6 +789,13 @@ function advanceToNextLevel() {
       gameState.actionsRemaining = 2; // Reset actions for new level
       gameState.levelProgression = 2; // Update progression tracker
       gameState.levelTransition = null; // Clear transition state
+
+      // Reset douse fire availability for new level
+      gameState.douseFireUsed.player1 = false;
+      gameState.douseFireUsed.player2 = false;
+      console.log(
+        '🔥 Douse fire availability reset for new level - both players get 1 douse fire each'
+      );
 
       // Reset player positions to Level 2 starting positions
       if (gameState.players.player1) {
@@ -899,7 +930,7 @@ function findNearestPlayer(slime) {
   return nearestPlayer;
 }
 
-function moveSlimeToward(slime, target) {
+function moveSlimeToward(slime, target, allSlimes) {
   if (!target) {
     return false;
   }
@@ -938,8 +969,8 @@ function moveSlimeToward(slime, target) {
   }
 
   // Check if another slime is already at this position
-  if (gameState.slimes) {
-    const slimeAtTarget = gameState.slimes.find(s => s !== slime && s.x === newX && s.y === newY);
+  if (allSlimes) {
+    const slimeAtTarget = allSlimes.find(s => s !== slime && s.x === newX && s.y === newY);
     if (slimeAtTarget) {
       return false; // Another slime is in the way
     }
@@ -967,6 +998,10 @@ function updateSlimes() {
   console.log('🟢 Updating slimes...');
 
   gameState.slimes.forEach((slime, index) => {
+    if (slime.hasMoved) {
+      return;
+    } // Skip if already acted this turn
+
     // Handle stun duration
     if (slime.isStunned && slime.stunDuration > 0) {
       slime.stunDuration--;
@@ -979,30 +1014,96 @@ function updateSlimes() {
       return; // Skip movement when stunned
     }
 
-    // Check if any player is within activation range (2 tiles)
-    const players = Object.values(gameState.players);
-    const playersInRange = players.filter(player => {
-      const distance = calculateDistance(slime, player);
-      return distance <= 2; // Activate when player is within 2 tiles
-    });
+    let attacked = false;
+    // Check for adjacent players to attack (priority over movement)
+    for (const playerId in gameState.players) {
+      const player = gameState.players[playerId];
+      const dx = Math.abs(player.x - slime.x);
+      const dy = Math.abs(player.y - slime.y);
 
-    if (playersInRange.length === 0) {
-      console.log(`🟢 Slime ${index} dormant (no players within 2 tiles)`);
-      return; // Skip movement when no players are close enough
-    }
+      if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+        // Player is adjacent, ATTACK!
+        player.health -= 1;
+        console.log(
+          `Player ${playerId} was attacked by ${slime.id}! Health is now ${player.health}`
+        );
+        attacked = true;
+        slime.hasMoved = true;
 
-    // Move toward nearest player (only if activated)
-    const nearestPlayer = findNearestPlayer(slime);
-    if (nearestPlayer) {
-      const distance = calculateDistance(slime, nearestPlayer);
-      console.log(`🟢 Slime ${index} activated! Nearest player at distance ${distance}`);
+        // Calculate attack direction for sprite flipping
+        let attackDirection = 'right'; // Default
+        if (player.x < slime.x) {
+          attackDirection = 'left'; // Player is to the left of slime
+        } else if (player.x > slime.x) {
+          attackDirection = 'right'; // Player is to the right of slime
+        }
+        // For vertical attacks (up/down), keep the slime's last move direction
+        else if (slime.lastMoveDirection) {
+          attackDirection = slime.lastMoveDirection;
+        }
 
-      const moved = moveSlimeToward(slime, nearestPlayer);
-      if (!moved) {
-        console.log(`🟢 Slime ${index} could not move (blocked path)`);
+        // Notify clients to play animation with direction
+        io.emit('playAttackAnimation', {
+          attackerId: slime.id,
+          victimId: playerId,
+          direction: attackDirection,
+        });
+
+        // Check for player death
+        if (player.health <= 0) {
+          console.log(`Player ${playerId} has been defeated!`);
+
+          // Broadcast health=0 first so all clients see it
+          broadcastCustomizedGameState();
+
+          // Send death notification to victim
+          io.emit('playerDied', { playerId: playerId });
+
+          // Send death message to other players
+          const victimName = playerId === 'player1' ? 'Player 1' : 'Player 2';
+          console.log(`🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${playerId})`);
+          io.emit('deathMessage', {
+            message: `💀 ${victimName} died!`,
+            deadPlayerId: playerId,
+          });
+
+          delete gameState.players[playerId];
+        }
+        break; // Slime attacks one player and ends its turn
       }
     }
+
+    // If no attack was made, then check for movement
+    if (!attacked) {
+      // Check if any player is within activation range (2 tiles)
+      const players = Object.values(gameState.players);
+      const playersInRange = players.filter(player => {
+        const distance = calculateDistance(slime, player);
+        return distance <= 2; // Activate when player is within 2 tiles
+      });
+
+      if (playersInRange.length === 0) {
+        console.log(`🟢 Slime ${index} dormant (no players within 2 tiles)`);
+        return; // Skip movement when no players are close enough
+      }
+
+      // Move toward nearest player (only if activated)
+      const nearestPlayer = findNearestPlayer(slime);
+      if (nearestPlayer) {
+        const distance = calculateDistance(slime, nearestPlayer);
+        console.log(`🟢 Slime ${index} activated! Nearest player at distance ${distance}`);
+
+        const moved = moveSlimeToward(slime, nearestPlayer, gameState.slimes);
+        if (!moved) {
+          console.log(`🟢 Slime ${index} could not move (blocked path)`);
+        }
+      }
+      slime.hasMoved = true;
+    }
   });
+
+  // After all slimes have acted, broadcast the updated state
+  broadcastCustomizedGameState();
 }
 
 // Snail AI Functions
@@ -1090,6 +1191,13 @@ function switchTurn() {
     `Turn switched to: ${gameState.currentPlayerTurn} (${gameState.actionsRemaining} actions remaining)`
   );
 
+  // Reset slime actions for the new turn
+  if (gameState.slimes) {
+    gameState.slimes.forEach(slime => {
+      slime.hasMoved = false;
+    });
+  }
+
   // Update slimes after turn switch
   updateSlimes();
 
@@ -1131,6 +1239,8 @@ io.on('connection', socket => {
       x: startingPositions[playerId].x,
       y: startingPositions[playerId].y,
       lastMoveDirection: null, // Track direction for sprite flipping
+      health: 3, // Players start with 3 health points
+      actionsRemaining: 2, // Reset actions each turn
     };
 
     if (isReconnection) {
@@ -1303,6 +1413,16 @@ io.on('connection', socket => {
         }
 
         if (itemUsed) {
+          // Mark douse fire as used for this level if it was a douse fire item
+          if (item === ITEM_TYPES.DOUSE_FIRE) {
+            gameState.douseFireUsed[playerId] = true;
+            // Remove the item immediately since it's now used up for this level
+            gameState.playerItems[playerId] = null;
+            console.log(
+              `🔥 ${playerId} has used their douse fire for this level and won't get another until next level`
+            );
+          }
+
           // Decrement actions remaining after successful item use
           gameState.actionsRemaining--;
           console.log(
@@ -1440,7 +1560,8 @@ io.on('connection', socket => {
           }
         }
 
-        // Check for active trap collision
+        // Check for active trap - allow movement first, then trigger death
+        let willDieOnTrap = false;
         if (gameState.trapDoors) {
           const trapAtTarget = gameState.trapDoors.find(
             trap => trap.x === newX && trap.y === newY && !trap.isOpen
@@ -1448,18 +1569,22 @@ io.on('connection', socket => {
 
           if (trapAtTarget) {
             console.log(
-              `Move blocked: ${playerId} tried to move onto active trap at (${newX}, ${newY}). A pressure plate must be activated first!`
+              `Player ${playerId} will die by moving onto active trap at (${newX}, ${newY})!`
             );
+            willDieOnTrap = true;
+            // Don't return here - let the movement complete first
+          }
+        }
 
-            // Send message to player about the trap
-            const socket = io.sockets.sockets.get(gameState.players[playerId].socketId);
-            if (socket) {
-              socket.emit('trapMessage', {
-                message: '🔴 Trap blocks your path! Someone must stand on a pressure plate.',
-              });
-            }
+        // Check for slime collision - players cannot move onto slime tiles
+        if (gameState.slimes) {
+          const isSlimeOnTarget = gameState.slimes.some(
+            slime => slime.x === newX && slime.y === newY
+          );
 
-            return; // Cannot move onto active trap
+          if (isSlimeOnTarget) {
+            console.log(`Move blocked: ${playerId} tried to move onto slime at (${newX}, ${newY})`);
+            return; // Abort the move
           }
         }
 
@@ -1549,6 +1674,51 @@ io.on('connection', socket => {
                   console.log(
                     `🔴 TRAP ${index + 1} ACTIVATED (blocks movement) at (${trap.x}, ${trap.y}) - controlling pressure plate inactive`
                   );
+
+                  // Check for deaths on newly activated trap
+                  if (wasTrapOpen && !trap.isOpen) {
+                    const trapX = trap.x;
+                    const trapY = trap.y;
+
+                    // Check for player deaths
+                    for (const deathPlayerId in gameState.players) {
+                      const checkPlayer = gameState.players[deathPlayerId];
+                      if (checkPlayer.x === trapX && checkPlayer.y === trapY) {
+                        console.log(`Player ${deathPlayerId} died on a trap!`);
+
+                        // Set health to 0 before death
+                        checkPlayer.health = 0;
+
+                        // Broadcast health=0 first so all clients see it
+                        broadcastCustomizedGameState();
+
+                        // Send death notification to victim
+                        io.emit('playerDied', { playerId: deathPlayerId });
+
+                        // Send death message to other players
+                        const victimName = deathPlayerId === 'player1' ? 'Player 1' : 'Player 2';
+                        console.log(
+                          `🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${deathPlayerId})`
+                        );
+                        io.emit('deathMessage', {
+                          message: `💀 ${victimName} died!`,
+                          deadPlayerId: deathPlayerId,
+                        });
+
+                        // Remove player after messages are sent
+                        delete gameState.players[deathPlayerId];
+                      }
+                    }
+
+                    // Check for slime deaths
+                    gameState.slimes = gameState.slimes.filter(slime => {
+                      if (slime.x === trapX && slime.y === trapY) {
+                        console.log(`Slime ${slime.id} died on a trap!`);
+                        return false; // Remove slime from array
+                      }
+                      return true;
+                    });
+                  }
                 }
               }
             });
@@ -1586,6 +1756,10 @@ io.on('connection', socket => {
           plateActivationMessages.forEach(msg => {
             io.emit('pressurePlateMessage', msg);
           });
+
+          // Broadcast position updates after pressure plate/trap logic
+          // This ensures all clients see movement before any death processing
+          broadcastCustomizedGameState();
         }
 
         // === KEY PICKUP LOGIC ===
@@ -1646,6 +1820,36 @@ io.on('connection', socket => {
           }
         }
 
+        // Handle trap death after movement is completed
+        if (willDieOnTrap) {
+          console.log(`Player ${playerId} died on active trap at (${player.x}, ${player.y})!`);
+
+          // Set health to 0 before death
+          player.health = 0;
+
+          // Broadcast movement first so player is visible on trap
+          broadcastCustomizedGameState();
+
+          // Small delay to ensure movement is rendered, then trigger death
+          setTimeout(() => {
+            // Send death notification to victim
+            io.emit('playerDied', { playerId: playerId });
+
+            // Send death message to other players
+            const victimName = playerId === 'player1' ? 'Player 1' : 'Player 2';
+            console.log(`🔔 SENDING deathMessage: ${victimName} died! (deadPlayerId: ${playerId})`);
+            io.emit('deathMessage', {
+              message: `💀 ${victimName} died!`,
+              deadPlayerId: playerId,
+            });
+
+            delete gameState.players[playerId];
+            broadcastCustomizedGameState();
+          }, 100); // 100ms delay for visual feedback
+
+          return; // Don't broadcast again below
+        }
+
         // Broadcast updated game state to all clients (customized for each)
         broadcastCustomizedGameState();
       } catch (moveError) {
@@ -1698,6 +1902,51 @@ io.on('connection', socket => {
           message: 'End turn processing failed',
           error: endTurnError.message,
         });
+      }
+    });
+
+    // Handle player attack requests
+    socket.on('playerAttack', ({ slimeId }) => {
+      const player = gameState.players[playerId];
+      const slime = gameState.slimes?.find(s => s.id === slimeId);
+
+      if (!player || !slime || player.actionsRemaining <= 0) {
+        // Validation failed
+        console.log(
+          `Attack rejected: player=${!!player}, slime=${!!slime}, actions=${player?.actionsRemaining}`
+        );
+        return;
+      }
+
+      // 1. Validate adjacency
+      const dx = Math.abs(player.x - slime.x);
+      const dy = Math.abs(player.y - slime.y);
+      if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+        // 2. Reduce slime health
+        slime.health -= 1;
+        console.log(`Slime ${slime.id} was hit! Health is now ${slime.health}`);
+
+        // 3. Check for slime death
+        if (slime.health <= 0) {
+          gameState.slimes = gameState.slimes.filter(s => s.id !== slimeId);
+          console.log(`Slime ${slime.id} defeated!`);
+        }
+
+        // 4. Use up player's action
+        player.actionsRemaining -= 1;
+
+        // 5. Notify clients to play animation
+        io.emit('playAttackAnimation', { attackerId: playerId, victimId: slimeId });
+
+        // 6. Broadcast state changes
+        broadcastCustomizedGameState();
+
+        // 7. Auto-switch turns if no actions remaining
+        if (player.actionsRemaining <= 0) {
+          switchTurn();
+        }
+      } else {
+        console.log(`Attack rejected: slime not adjacent to player`);
       }
     });
 
