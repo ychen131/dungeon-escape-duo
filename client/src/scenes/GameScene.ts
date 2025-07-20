@@ -1609,13 +1609,7 @@ export class GameScene extends Phaser.Scene {
                         delete this.playerSprites[spriteKey + '_health'];
                     }
                     
-                    // Destroy the ID label
-                    if (this.playerSprites[spriteKey + '_id']) {
-                        const idSprite = this.playerSprites[spriteKey + '_id'];
-                        (idSprite as any).setVisible(false);
-                        (idSprite as any).destroy();
-                        delete this.playerSprites[spriteKey + '_id'];
-                    }
+                    // ID label cleanup removed - no longer creating ID labels
                 }
             }
         });
@@ -1682,27 +1676,12 @@ export class GameScene extends Phaser.Scene {
                         slimeSprite.setPosition(coords.x, coords.y);
                     }
                     
-                    // Update or create ID label to help identify slimes
-                    let idLabel = this.playerSprites[`${slimeId}_id`] as Phaser.GameObjects.Text;
-                    if (!idLabel) {
-                        idLabel = this.add.text(coords.x, coords.y - 50, `ID: ${slimeId}`, {
-                            fontSize: '12px',
-                            color: '#ffff00',
-                            fontFamily: 'Arial',
-                            stroke: '#000000',
-                            strokeThickness: 2
-                        });
-                        idLabel.setOrigin(0.5);
-                        idLabel.setDepth(92); // Above health text
-                        this.playerSprites[`${slimeId}_id`] = idLabel;
-                    } else {
-                        idLabel.setPosition(coords.x, coords.y - 50);
-                    }
+                    // ID labels removed - no longer needed for debugging
                     
                     // Update or create health display
                     let healthText = this.playerSprites[`${slimeId}_health`] as Phaser.GameObjects.Text;
                     if (!healthText) {
-                        healthText = this.add.text(coords.x, coords.y - 35, '', {
+                        healthText = this.add.text(coords.x, coords.y - 25, '', {
                             fontSize: '14px',
                             color: '#ff0000',
                             fontFamily: 'Arial',
@@ -1717,12 +1696,12 @@ export class GameScene extends Phaser.Scene {
                     // Update health text
                     if (slime.health !== undefined) {
                         healthText.setText(`HP: ${slime.health}`);
-                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setPosition(coords.x, coords.y - 25);
                         healthText.setVisible(true);
                     } else {
                         // Default to 2 if health not provided
                         healthText.setText(`HP: 2`);
-                        healthText.setPosition(coords.x, coords.y - 35);
+                        healthText.setPosition(coords.x, coords.y - 25);
                         healthText.setVisible(true);
                     }
                     
