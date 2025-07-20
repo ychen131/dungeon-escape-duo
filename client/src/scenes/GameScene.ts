@@ -773,7 +773,7 @@ export class GameScene extends Phaser.Scene {
             this.displaySnailSpeech(data.message, data.snailPos.x, data.snailPos.y);
         });
         
-        this.socket.on('playAttackAnimation', (data: { attackerId: string; victimId: string }) => {
+        this.socket.on('playAttackAnimation', (data: { attackerId: string; victimId: string; direction?: string }) => {
             console.log('Attack animation:', data);
             
             // Find attacker sprite
@@ -784,6 +784,18 @@ export class GameScene extends Phaser.Scene {
             
             if (attackerSprite && attackerSprite instanceof Phaser.GameObjects.Sprite) {
                 const textureKey = attackerSprite.texture.key;
+                
+                // Handle sprite flipping for slime attacks based on direction
+                if (data.attackerId.startsWith('slime') && data.direction) {
+                    if (data.direction === 'left') {
+                        attackerSprite.setFlipX(true);
+                    } else if (data.direction === 'right') {
+                        attackerSprite.setFlipX(false);
+                    }
+                    console.log(`🟢 Slime attack direction: ${data.direction}, flipped: ${data.direction === 'left'}`);
+                }
+                
+                // Play attack animation
                 if (data.attackerId.startsWith('slime')) {
                     attackerSprite.play('slime_attack', true);
                 } else if (textureKey === 'soldier') {

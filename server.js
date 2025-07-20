@@ -1002,8 +1002,24 @@ function updateSlimes() {
         attacked = true;
         slime.hasMoved = true;
 
-        // Notify clients to play animation
-        io.emit('playAttackAnimation', { attackerId: slime.id, victimId: playerId });
+        // Calculate attack direction for sprite flipping
+        let attackDirection = 'right'; // Default
+        if (player.x < slime.x) {
+          attackDirection = 'left'; // Player is to the left of slime
+        } else if (player.x > slime.x) {
+          attackDirection = 'right'; // Player is to the right of slime  
+        }
+        // For vertical attacks (up/down), keep the slime's last move direction
+        else if (slime.lastMoveDirection) {
+          attackDirection = slime.lastMoveDirection;
+        }
+
+        // Notify clients to play animation with direction
+        io.emit('playAttackAnimation', { 
+          attackerId: slime.id, 
+          victimId: playerId, 
+          direction: attackDirection 
+        });
 
         // Check for player death
         if (player.health <= 0) {
