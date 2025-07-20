@@ -1817,7 +1817,7 @@ export class GameScene extends Phaser.Scene {
                 fontFamily: 'Arial',
                 stroke: '#000000',
                 strokeThickness: 4
-            }).setOrigin(0.5);
+            }).setOrigin(0.5).setDepth(1000); // High depth to appear on top of everything
             this.input.keyboard!.enabled = false;
         }
         
