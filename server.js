@@ -14,7 +14,7 @@ const corsOptions = {
     'http://localhost:5173', 
     'http://localhost:3000',
     // Add your Cloudflare domain(s) here - replace with your actual domain
-    'https://dungeon-escape-duo.chuanchuanc.workers.dev/',
+    'https://dungeon-escape-duo.chuanchuanc.workers.dev',
     // Allow any subdomain of pages.dev for Cloudflare deployments
     /https:\/\/.*\.pages\.dev$/,
     // If you have a custom domain, add it here
