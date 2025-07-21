@@ -296,8 +296,10 @@ export class GameScene extends Phaser.Scene {
         if (!this.socket) {
             // No existing socket, create new connection
             const isDevelopment = import.meta.env.DEV;
-            const serverUrl = isDevelopment ? 'http://localhost:3000' : undefined;
+            const serverUrl = isDevelopment ? 'http://localhost:3000' : 'https://dungeon-escape-duo.onrender.com';
             this.socket = (window as any).io(serverUrl);
+            
+            console.log('🔌 Created new socket connection in GameScene to:', serverUrl);
             
             // Expose socket globally for testing
             (window as any).socket = this.socket;
